@@ -136,8 +136,9 @@ class CloudClient:
     # ----- Login/Logout -----
     def login(self, email: str, password: str, device_uid: str | None = None,
               device_name: str | None = None) -> TokenData:
-        duid = device_uid or self.device_uid
-        dname = device_name or self.device_name
+        # Đảm bảo luôn gửi device_uid và device_name hợp lệ
+        duid = device_uid or stable_device_uid()
+        dname = device_name or platform.node() or "Unknown PC"
         payload = {"email": email, "password": password, "device_uid": duid, "device_name": dname}
 
         r = self.session.post(self._url(LOGIN_PATH), json=payload, timeout=REQUEST_TIMEOUT)
