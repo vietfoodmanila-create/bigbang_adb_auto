@@ -13,139 +13,121 @@ class ClickLabel(QtWidgets.QLabel):
             self.clicked.emit()
         super().mousePressEvent(e)
 
+
+# File: ui_license.py
+
 class ActivateLicenseDialog(QtWidgets.QDialog):
-    """Form kích hoạt/gia hạn license + thông tin mua (Zalo/Ngân hàng)."""
+    """Form hiển thị danh sách license và cho phép kích hoạt."""
+
     def __init__(self, cloud: CloudClient, parent=None):
         super().__init__(parent)
         self.cloud = cloud
-        self.setWindowTitle("Kích hoạt / Gia hạn License — BBTK Auto")
-        self.setMinimumWidth(520)
+        self.setWindowTitle("Kích hoạt License — BBTK Auto")
+        self.setMinimumWidth(600)
         self._build()
+        self._load_user_licenses()
 
     def _build(self):
-        lay = QtWidgets.QVBoxLayout(self)
+        self.layout = QtWidgets.QVBoxLayout(self)
 
-        group1 = QtWidgets.QGroupBox("Nhập mã license để kích hoạt / gia hạn")
-        f1 = QtWidgets.QFormLayout(group1)
+        # Phần hiển thị danh sách license
+        group1 = QtWidgets.QGroupBox("License của bạn")
+        v1 = QtWidgets.QVBoxLayout(group1)
+        self.license_list_widget = QtWidgets.QWidget()
+        self.license_list_layout = QtWidgets.QVBoxLayout(self.license_list_widget)
+        self.license_list_layout.setContentsMargins(0, 0, 0, 0)
+        v1.addWidget(self.license_list_widget)
+
+        # Phần nhập key thủ công (vẫn giữ lại)
+        group2 = QtWidgets.QGroupBox("Nhập mã license khác (nếu có)")
+        f2 = QtWidgets.QFormLayout(group2)
         self.leKey = QtWidgets.QLineEdit()
-        self.leKey.setPlaceholderText("Nhập mã license…")
-        self.leDevice = QtWidgets.QLineEdit(stable_device_uid())
-        self.leDevice.setReadOnly(True)
-        self.leName = QtWidgets.QLineEdit(QtWidgets.QApplication.instance().applicationName() or "PC")
-        self.btnActivate = QtWidgets.QPushButton("Kích hoạt / Gia hạn")
-        self.btnActivate.clicked.connect(self.on_activate)
-        f1.addRow("Mã license", self.leKey)
-        f1.addRow("Thiết bị UID", self.leDevice)
-        f1.addRow("Tên thiết bị", self.leName)
-        f1.addRow(self.btnActivate)
+        self.leKey.setPlaceholderText("Nhập mã license...")
+        self.btnActivateManual = QtWidgets.QPushButton("Kích hoạt mã này")
+        self.btnActivateManual.clicked.connect(self.on_activate_manual)
+        f2.addRow("Mã license:", self.leKey)
+        f2.addRow(self.btnActivateManual)
 
-        group2 = QtWidgets.QGroupBox("Mua license")
-        v2 = QtWidgets.QVBoxLayout(group2)
+        # Phần thông tin thanh toán
+        group3 = QtWidgets.QGroupBox("Mua license")
+        self.payment_info_layout = QtWidgets.QVBoxLayout(group3)
+        self.lblZalo = QtWidgets.QLabel("Đang tải...")
+        self.lblBank = QtWidgets.QLabel("")
+        self.payment_info_layout.addWidget(self.lblZalo)
+        self.payment_info_layout.addWidget(self.lblBank)
 
-        self.lblZalo = QtWidgets.QLabel("-")
-        self.imgZalo = QtWidgets.QLabel()
-        self.imgZalo.setFixedSize(120, 120)
-        self.imgZalo.setScaledContents(True)
+        self.layout.addWidget(group1)
+        self.layout.addWidget(group2)
+        self.layout.addWidget(group3)
 
-        self.lblBank = QtWidgets.QLabel("-")
-        self.imgBank = QtWidgets.QLabel()
-        self.imgBank.setFixedSize(160, 160)
-        self.imgBank.setScaledContents(True)
+        self._load_support_info()  # Tải thông tin Zalo/Bank
 
-        self.lblNote = QtWidgets.QLabel("")
-        self.lblNote.setWordWrap(True)
-        self.lblZalo.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
-        self.lblBank.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
-
-        grid = QtWidgets.QGridLayout()
-        grid.addWidget(QtWidgets.QLabel("Zalo hỗ trợ:"), 0, 0)
-        grid.addWidget(self.lblZalo, 0, 1)
-        grid.addWidget(self.imgZalo, 0, 2)
-
-        grid.addWidget(QtWidgets.QLabel("Ngân hàng:"), 1, 0)
-        grid.addWidget(self.lblBank, 1, 1)
-        grid.addWidget(self.imgBank, 1, 2)
-
-        grid.addWidget(QtWidgets.QLabel("Nội dung chuyển tiền:"), 2, 0)
-        grid.addWidget(self.lblNote, 2, 1, 1, 2)
-
-        v2.addLayout(grid)
-
-        btnClose = QtWidgets.QPushButton("Đóng")
-        btnClose.clicked.connect(self.reject)
-
-        lay.addWidget(group1)
-        lay.addWidget(group2)
-        lay.addStretch()
-        row = QtWidgets.QHBoxLayout()
-        row.addStretch()
-        row.addWidget(btnClose)
-        lay.addLayout(row)
-
-        self._load_support_info()
-
-    def _load_support_info(self):
+    def _load_user_licenses(self):
         try:
-            j = self.cloud.session.get(self.cloud._url("/api/app/support"), timeout=15).json()
-            d = j.get("data", {})
-            zalo = d.get("zalo", {})
-            bank = d.get("bank", {})
-            note_tpl = d.get("note_template") or ""
-            # gợi ý note thay bằng email (nếu có)
-            email = (self.cloud.load_token() or TokenData("", None)).email or ""
-            note = (d.get("note_example") or note_tpl).replace("{email}", email)
+            # Xóa các license cũ trước khi tải lại
+            for i in reversed(range(self.license_list_layout.count())):
+                self.license_list_layout.itemAt(i).widget().setParent(None)
 
-            zalo_txt = f"{zalo.get('number','')}"
-            link = zalo.get("link")
-            if link:
-                zalo_txt += f" — <a href='{link}'>Zalo link</a>"
-            self.lblZalo.setText(zalo_txt)
+            licenses = self.cloud.list_licenses()  # Gọi API mới
+            if not licenses:
+                self.license_list_layout.addWidget(QtWidgets.QLabel("Bạn chưa sở hữu license nào."))
+                return
 
-            bank_txt = f"{bank.get('name','')} — {bank.get('account','')} ({bank.get('holder','')})"
-            self.lblBank.setText(bank_txt)
-            self.lblNote.setText(note)
+            for lic in licenses:
+                line = QtWidgets.QHBoxLayout()
+                key_short = f"{lic['license_key'][:8]}...{lic['license_key'][-4:]}"
+                info_text = (f"<b>{key_short}</b> (Gói: {lic['plan']}) - "
+                             f"Hết hạn: {lic['expires_at'].split(' ')[0]} - "
+                             f"Thiết bị: {lic['active_devices']}/{lic['max_devices']}")
 
-            self._set_img(self.imgZalo, zalo.get("qr_url"))
-            self._set_img(self.imgBank, bank.get("qr_url"))
+                label = QtWidgets.QLabel(info_text)
+                btn = QtWidgets.QPushButton("Kích hoạt")
+
+                if lic['active_devices'] >= lic['max_devices']:
+                    btn.setEnabled(False)
+                    btn.setText("Đã đủ thiết bị")
+
+                # Dùng lambda để truyền key vào hàm xử lý
+                btn.clicked.connect(lambda checked=False, key=lic['license_key']: self.on_activate_from_list(key))
+
+                line.addWidget(label)
+                line.addStretch()
+                line.addWidget(btn)
+                self.license_list_layout.addLayout(line)
+
         except Exception as e:
-            self.lblZalo.setText(f"Lỗi tải thông tin: {e}")
+            self.license_list_layout.addWidget(QtWidgets.QLabel(f"Lỗi tải danh sách license: {e}"))
 
-    def _set_img(self, lbl: QtWidgets.QLabel, url: str | None):
-        if not url:
-            lbl.clear(); return
-        try:
-            r = self.cloud.session.get(url, timeout=15)
-            if r.ok:
-                pm = QtGui.QPixmap()
-                pm.loadFromData(r.content)
-                lbl.setPixmap(pm)
-        except Exception:
-            pass
+    def on_activate_from_list(self, key):
+        self.activate_key(key)
 
-    def on_activate(self):
+    def on_activate_manual(self):
         key = self.leKey.text().strip()
         if not key:
-            QtWidgets.QMessageBox.warning(self, "Thiếu thông tin", "Nhập mã license.")
+            QtWidgets.QMessageBox.warning(self, "Lỗi", "Vui lòng nhập mã license.")
             return
+        self.activate_key(key)
+
+    def activate_key(self, key):
         try:
-            payload = {
-                "license_key": key,
-                "device_uid": self.leDevice.text().strip(),
-                "device_name": self.leName.text().strip()
-            }
-            r = self.cloud.session.post(self.cloud._url("/api/license/activate"),
-                                        headers=self.cloud._auth_headers(),
-                                        json=payload, timeout=20)
-            if r.status_code >= 400:
-                try:
-                    msg = r.json().get("error","activate_failed")
-                except Exception:
-                    msg = r.text
-                raise RuntimeError(msg)
-            QtWidgets.QMessageBox.information(self, "Thành công", "Kích hoạt / Gia hạn thành công.")
-            self.accept()
+            self.cloud.license_activate(key, stable_device_uid(), "MyPC")
+            QtWidgets.QMessageBox.information(self, "Thành công", "Kích hoạt license thành công!")
+            self.accept()  # Đóng dialog và báo hiệu thành công
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, "Lỗi", f"Kích hoạt thất bại: {e}")
+
+    def _load_support_info(self):
+        # Hàm này giữ nguyên, nhưng sẽ hoạt động sau khi sửa server
+        try:
+            info = self.cloud.payment_info()
+            zalo = info.get("zalo", {})
+            bank = info.get("bank", {})
+            self.lblZalo.setText(
+                f"<b>Zalo:</b> {zalo.get('number', 'N/A')} - <a href='{zalo.get('link', '#')}'>Chat ngay</a>")
+            self.lblBank.setText(
+                f"<b>Ngân hàng:</b> {bank.get('name', 'N/A')} - {bank.get('account', 'N/A')} ({bank.get('holder', 'N/A')})")
+        except Exception as e:
+            self.lblZalo.setText(f"Lỗi tải thông tin hỗ trợ: {e}")
 
 class AccountBanner(QtWidgets.QWidget):
     """Thanh trên cùng: email; trạng thái license; nút kích hoạt/gia hạn; menu tài khoản."""

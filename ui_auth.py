@@ -172,7 +172,8 @@ class CloudClient:
         return True
 
     def license_status(self) -> dict:
-        r = self.session.get(self._url(LICENSE_STATUS_PATH), headers=self._auth_headers(), timeout=REQUEST_TIMEOUT)
+        params = {'device_uid': stable_device_uid()}
+        r = self.session.get(self._url(LICENSE_STATUS_PATH), headers=self._auth_headers(), params=params,timeout=REQUEST_TIMEOUT)
         if r.status_code == 401: return {"logged_in": False}
         self._raise_for_json_error(r)
         data = r.json(); data["logged_in"] = True; return data
@@ -182,6 +183,11 @@ class CloudClient:
         r = self.session.post(self._url(LICENSE_ACTIVATE), headers=self._auth_headers(), json=pl, timeout=REQUEST_TIMEOUT)
         self._raise_for_json_error(r); return r.json()
 
+    def list_licenses(self) -> list:
+        """Lấy danh sách các license mà người dùng sở hữu."""
+        r = self.session.get(self._url("/api/license/list"), headers=self._auth_headers(), timeout=REQUEST_TIMEOUT)
+        self._raise_for_json_error(r)
+        return r.json().get("licenses", [])
     # ----- New: lấy thông tin thanh toán + ảnh QR từ server -----
     def payment_info(self) -> dict:
         r = self.session.get(self._url(PAYMENT_INFO_PATH), headers=self._auth_headers(), timeout=REQUEST_TIMEOUT)
