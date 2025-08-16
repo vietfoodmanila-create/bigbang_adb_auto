@@ -1,0 +1,219 @@
+{
+  "cooldown_hours": 1,
+  "per_run": 1,
+  "items": [
+    {
+      "name": "TuyếtHoa",
+      "last": "20250814:08",
+      "blessed": {
+        "20250813": [
+          "phamcong01@punkproof.com",
+          "phamcong02@punkproof.com",
+          "phamcong03@punkproof.com",
+          "phamcong04@punkproof.com",
+          "phamcong05@punkproof.com",
+          "phamcong06@punkproof.com",
+          "phamcong07@punkproof.com",
+          "phamcong08@punkproof.com",
+          "phamcong09@punkproof.com",
+          "phamcong10@punkproof.com",
+          "phamcong11@punkproof.com",
+          "phamcong12@punkproof.com",
+          "phamcong13@punkproof.com",
+          "phamcong14@punkproof.com",
+          "phamcong15@punkproof.com",
+          "phamcong16@punkproof.com",
+          "phamcong17@punkproof.com",
+          "phamcong18@punkproof.com",
+          "phamcong19@punkproof.com",
+          "phamcong20@punkproof.com",
+          "phamcong21@punkproof.com",
+          "phamcong22@punkproof.com",
+          "phamcong23@punkproof.com",
+          "vivi10@somoj.com",
+          "phamcong24@punkproof.com",
+          "vivi21@somoj.com"
+        ],
+        "20250814": [
+          "phamcong01@punkproof.com"
+        ]
+      }
+    },
+    {
+      "name": "Hoa Hồng Đen",
+      "last": "20250813:19",
+      "blessed": {
+        "20250813": [
+          "phamcong01@punkproof.com",
+          "phamcong02@punkproof.com",
+          "phamcong03@punkproof.com",
+          "phamcong04@punkproof.com",
+          "phamcong05@punkproof.com",
+          "phamcong06@punkproof.com",
+          "phamcong07@punkproof.com",
+          "phamcong08@punkproof.com",
+          "phamcong09@punkproof.com",
+          "phamcong10@punkproof.com",
+          "phamcong11@punkproof.com",
+          "phamcong12@punkproof.com",
+          "phamcong13@punkproof.com",
+          "phamcong14@punkproof.com",
+          "phamcong15@punkproof.com",
+          "phamcong16@punkproof.com",
+          "phamcong17@punkproof.com",
+          "phamcong18@punkproof.com",
+          "phamcong19@punkproof.com",
+          "phamcong20@punkproof.com",
+          "phamcong21@punkproof.com",
+          "phamcong22@punkproof.com",
+          "vivi10@somoj.com",
+          "phamcong23@punkproof.com",
+          "vivi21@somoj.com"
+        ]
+      }
+    },
+    {
+      "name": "Bạch Hoa",
+      "last": "20250814:08",
+      "blessed": {
+        "20250813": [
+          "phamcong01@punkproof.com",
+          "phamcong02@punkproof.com",
+          "phamcong03@punkproof.com",
+          "phamcong04@punkproof.com",
+          "phamcong05@punkproof.com",
+          "phamcong06@punkproof.com",
+          "phamcong07@punkproof.com",
+          "phamcong08@punkproof.com",
+          "phamcong09@punkproof.com",
+          "phamcong10@punkproof.com",
+          "phamcong11@punkproof.com",
+          "phamcong12@punkproof.com",
+          "phamcong13@punkproof.com",
+          "phamcong14@punkproof.com",
+          "phamcong15@punkproof.com",
+          "phamcong16@punkproof.com",
+          "phamcong17@punkproof.com",
+          "phamcong18@punkproof.com",
+          "phamcong19@punkproof.com",
+          "phamcong20@punkproof.com",
+          "phamcong21@punkproof.com",
+          "phamcong22@punkproof.com",
+          "vivi10@somoj.com",
+          "phamcong23@punkproof.com",
+          "vivi21@somoj.com"
+        ],
+        "20250814": [
+          "phamcong01@punkproof.com"
+        ]
+      }
+    },
+    {
+      "name": "Mai Lâm Cư Sĩ",
+      "last": "20250814:08",
+      "blessed": {
+        "20250813": [
+          "phamcong01@punkproof.com",
+          "phamcong02@punkproof.com",
+          "phamcong03@punkproof.com",
+          "phamcong10@punkproof.com",
+          "phamcong17@punkproof.com",
+          "vivi21@somoj.com"
+        ],
+        "20250814": [
+          "phamcong01@punkproof.com"
+        ]
+      }
+    },
+    {
+      "name": "mandaidi",
+      "last": "20250813:18",
+      "blessed": {}
+    },
+    {
+      "name": "Hông phải Rồng",
+      "last": "20250814:08",
+      "blessed": {
+        "20250813": [
+          "phamcong01@punkproof.com",
+          "phamcong02@punkproof.com",
+          "phamcong03@punkproof.com",
+          "phamcong10@punkproof.com",
+          "phamcong17@punkproof.com",
+          "vivi21@somoj.com"
+        ],
+        "20250814": [
+          "phamcong01@punkproof.com"
+        ]
+      }
+    },
+    {
+      "name": "Socthuoc",
+      "last": "20250814:08",
+      "blessed": {
+        "20250813": [
+          "phamcong01@punkproof.com",
+          "phamcong02@punkproof.com",
+          "phamcong03@punkproof.com",
+          "phamcong10@punkproof.com",
+          "phamcong17@punkproof.com",
+          "vivi21@somoj.com"
+        ],
+        "20250814": [
+          "phamcong01@punkproof.com"
+        ]
+      }
+    },
+    {
+      "name": "hoamaubon",
+      "last": "20250814:08",
+      "blessed": {
+        "20250813": [
+          "phamcong01@punkproof.com",
+          "phamcong02@punkproof.com",
+          "phamcong03@punkproof.com",
+          "phamcong10@punkproof.com",
+          "phamcong17@punkproof.com",
+          "vivi21@somoj.com"
+        ],
+        "20250814": [
+          "phamcong01@punkproof.com"
+        ]
+      }
+    },
+    {
+      "name": "Baby Đại Hắc",
+      "last": "20250814:08",
+      "blessed": {
+        "20250813": [
+          "phamcong01@punkproof.com",
+          "phamcong02@punkproof.com",
+          "phamcong03@punkproof.com",
+          "phamcong10@punkproof.com",
+          "phamcong17@punkproof.com",
+          "vivi21@somoj.com"
+        ],
+        "20250814": [
+          "phamcong01@punkproof.com"
+        ]
+      }
+    },
+    {
+      "name": "Như Hoa Cô Nương",
+      "last": "20250814:08",
+      "blessed": {
+        "20250813": [
+          "phamcong01@punkproof.com",
+          "phamcong02@punkproof.com",
+          "phamcong03@punkproof.com",
+          "phamcong10@punkproof.com",
+          "phamcong17@punkproof.com",
+          "vivi21@somoj.com"
+        ],
+        "20250814": [
+          "phamcong01@punkproof.com"
+        ]
+      }
+    }
+  ]
+}
