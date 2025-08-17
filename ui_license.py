@@ -82,8 +82,9 @@ class ActivateLicenseDialog(QtWidgets.QDialog):
 
                 label = QtWidgets.QLabel(info_text)
                 btn = QtWidgets.QPushButton("Kích hoạt")
-
-                if lic['active_devices'] >= lic['max_devices']:
+                active_count = int(lic['active_devices'])
+                max_count = int(lic['max_devices'])
+                if active_count >= max_count:
                     btn.setEnabled(False)
                     btn.setText("Đã đủ thiết bị")
 
