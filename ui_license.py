@@ -130,6 +130,157 @@ class ActivateLicenseDialog(QtWidgets.QDialog):
         except Exception as e:
             self.lblZalo.setText(f"Lỗi tải thông tin hỗ trợ: {e}")
 
+
+class LicenseManagerDialog(QtWidgets.QDialog):
+    """
+    Hộp thoại quản lý license toàn diện:
+    - Hiển thị trạng thái license hiện tại.
+    - Cho phép gia hạn bằng key mới.
+    - Hiển thị thông tin mua license (Zalo, Bank) kèm QR Code.
+    """
+
+    def __init__(self, cloud: CloudClient, parent=None):
+        super().__init__(parent)
+        self.cloud = cloud
+        self.setWindowTitle("Quản lý License — BBTK Auto")
+        self.setMinimumWidth(650)
+        self.setMinimumHeight(500)
+        self._build()
+        self.refresh_all_info()
+
+    def _build(self):
+        self.layout = QtWidgets.QVBoxLayout(self)
+        self.tabs = QtWidgets.QTabWidget()
+
+        # Tab 1: Trạng thái và Gia hạn
+        tab_status = QtWidgets.QWidget()
+        layout_status = QtWidgets.QVBoxLayout(tab_status)
+
+        group_current = QtWidgets.QGroupBox("Trạng thái License hiện tại")
+        form_current = QtWidgets.QFormLayout(group_current)
+        self.lbl_status = QtWidgets.QLabel("Đang tải...")
+        self.lbl_plan = QtWidgets.QLabel("...")
+        self.lbl_expires = QtWidgets.QLabel("...")
+        self.lbl_days_left = QtWidgets.QLabel("...")
+        form_current.addRow("Trạng thái:", self.lbl_status)
+        form_current.addRow("Gói:", self.lbl_plan)
+        form_current.addRow("Ngày hết hạn:", self.lbl_expires)
+        form_current.addRow("Số ngày còn lại:", self.lbl_days_left)
+
+        group_renew = QtWidgets.QGroupBox("Nhập mã license mới để gia hạn")
+        form_renew = QtWidgets.QFormLayout(group_renew)
+        self.le_key_renew = QtWidgets.QLineEdit()
+        self.le_key_renew.setPlaceholderText("Nhập mã license mới...")
+        self.btn_renew = QtWidgets.QPushButton("Gia hạn / Kích hoạt")
+        self.btn_renew.clicked.connect(self.on_activate_renew)
+        form_renew.addRow("Mã license:", self.le_key_renew)
+        form_renew.addRow(self.btn_renew)
+
+        layout_status.addWidget(group_current)
+        layout_status.addWidget(group_renew)
+        layout_status.addStretch()
+
+        # Tab 2: Mua License
+        tab_buy = QtWidgets.QWidget()
+        layout_buy = QtWidgets.QVBoxLayout(tab_buy)
+
+        group_payment = QtWidgets.QGroupBox("Thông tin mua License")
+        grid_payment = QtWidgets.QGridLayout(group_payment)
+
+        self.lbl_zalo_info = QtWidgets.QLabel("Đang tải...")
+        self.lbl_zalo_qr = QtWidgets.QLabel()
+        self.lbl_zalo_qr.setFixedSize(150, 150)
+        self.lbl_zalo_qr.setScaledContents(True)
+        self.lbl_zalo_qr.setStyleSheet("border: 1px solid #ccc;")
+
+        self.lbl_bank_info = QtWidgets.QLabel("...")
+        self.lbl_bank_qr = QtWidgets.QLabel()
+        self.lbl_bank_qr.setFixedSize(150, 150)
+        self.lbl_bank_qr.setScaledContents(True)
+        self.lbl_bank_qr.setStyleSheet("border: 1px solid #ccc;")
+
+        grid_payment.addWidget(QtWidgets.QLabel("<b>Zalo:</b>"), 0, 0, Qt.AlignTop)
+        grid_payment.addWidget(self.lbl_zalo_info, 0, 1)
+        grid_payment.addWidget(self.lbl_zalo_qr, 0, 2)
+        grid_payment.addWidget(QtWidgets.QLabel("<b>Ngân hàng:</b>"), 1, 0, Qt.AlignTop)
+        grid_payment.addWidget(self.lbl_bank_info, 1, 1)
+        grid_payment.addWidget(self.lbl_bank_qr, 1, 2)
+        grid_payment.setColumnStretch(1, 1)
+
+        layout_buy.addWidget(group_payment)
+        layout_buy.addStretch()
+
+        self.tabs.addTab(tab_status, "Trạng thái & Gia hạn")
+        self.tabs.addTab(tab_buy, "Mua License")
+        self.layout.addWidget(self.tabs)
+
+    def refresh_all_info(self):
+        self.load_license_status()
+        self.load_payment_info()
+
+    def load_license_status(self):
+        try:
+            st = self.cloud.license_status()
+            if st.get("valid"):
+                self.lbl_status.setText("<b style='color: green;'>ĐÃ KÍCH HOẠT</b>")
+                self.lbl_plan.setText(st.get("plan", "..."))
+                self.lbl_expires.setText(st.get("expires_at", "..."))
+                self.lbl_days_left.setText(str(st.get("days_left", "...")))
+            else:
+                self.lbl_status.setText("<b style='color: red;'>CHƯA KÍCH HOẠT</b>")
+                self.lbl_plan.setText("N/A")
+                self.lbl_expires.setText("N/A")
+                self.lbl_days_left.setText("N/A")
+        except Exception as e:
+            self.lbl_status.setText(f"<b style='color: red;'>Lỗi: {e}</b>")
+
+    def on_activate_renew(self):
+        key = self.le_key_renew.text().strip()
+        if not key:
+            QtWidgets.QMessageBox.warning(self, "Lỗi", "Vui lòng nhập mã license mới.")
+            return
+        try:
+            self.cloud.license_activate(key, stable_device_uid(), "MyPC")
+            QtWidgets.QMessageBox.information(self, "Thành công", "Gia hạn / Kích hoạt thành công!")
+            self.refresh_license_status()  # Cập nhật lại thông tin
+            self.le_key_renew.clear()
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "Lỗi", f"Thao tác thất bại: {e}")
+
+    def load_payment_info(self):
+        try:
+            info = self.cloud.payment_info().get('data', {})
+            zalo = info.get("zalo", {})
+            bank = info.get("bank", {})
+
+            zalo_html = f"Số điện thoại: {zalo.get('number', 'N/A')}<br>"
+            zalo_html += f"Link: <a href='{zalo.get('link', '#')}'>Chat ngay</a>"
+            self.lbl_zalo_info.setText(zalo_html)
+
+            bank_html = f"Ngân hàng: {bank.get('name', 'N/A')}<br>"
+            bank_html += f"Số tài khoản: {bank.get('account', 'N/A')}<br>"
+            bank_html += f"Chủ tài khoản: {bank.get('holder', 'N/A')}"
+            self.lbl_bank_info.setText(bank_html)
+
+            # Tải ảnh QR
+            self.download_image(zalo.get('qr_url'), self.lbl_zalo_qr)
+            self.download_image(bank.get('qr_url'), self.lbl_bank_qr)
+
+        except Exception as e:
+            self.lbl_zalo_info.setText(f"Lỗi tải thông tin: {e}")
+
+    def download_image(self, url, label_widget):
+        if not url:
+            return
+        try:
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            pixmap = QtGui.QPixmap()
+            pixmap.loadFromData(response.content)
+            label_widget.setPixmap(pixmap)
+        except Exception as e:
+            print(f"Lỗi tải ảnh từ {url}: {e}")
+            label_widget.setText("Lỗi tải ảnh")
 class AccountBanner(QtWidgets.QWidget):
     """Thanh trên cùng: email; trạng thái license; nút kích hoạt/gia hạn; menu tài khoản."""
     def __init__(self, cloud: CloudClient, parent=None):
@@ -279,7 +430,7 @@ class AccountBanner(QtWidgets.QWidget):
             # Lệnh refresh này sẽ cập nhật banner và khóa các tính năng
             par.refresh_license()
     def _activate_dialog(self):
-        dlg = ActivateLicenseDialog(self.cloud, self)
+        dlg = LicenseManagerDialog(self.cloud, self)
         if dlg.exec() == QtWidgets.QDialog.Accepted:
             # controller bên ngoài sẽ gọi refresh
             self.parent().refresh_license()  # parent sẽ là LicenseController._container
