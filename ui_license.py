@@ -3,6 +3,7 @@
 from __future__ import annotations
 from PySide6 import QtCore, QtGui, QtWidgets
 import requests
+import platform
 
 # Dùng lại CloudClient và các hàm tiện ích từ ui_auth
 from ui_auth import CloudClient, stable_device_uid, TokenData, AuthDialog, ChangePasswordDialog
@@ -74,12 +75,14 @@ class LicenseManagerDialog(QtWidgets.QDialog):
         grid_payment = QtWidgets.QGridLayout(group_payment)
 
         self.lbl_zalo_info = QtWidgets.QLabel("Đang tải...")
+        self.lbl_zalo_info.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
         self.lbl_zalo_qr = QtWidgets.QLabel()
         self.lbl_zalo_qr.setFixedSize(150, 150)
         self.lbl_zalo_qr.setScaledContents(True)
         self.lbl_zalo_qr.setStyleSheet("border: 1px solid #ccc; background-color: #f0f0f0;")
 
         self.lbl_bank_info = QtWidgets.QLabel("...")
+        self.lbl_bank_info.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
         self.lbl_bank_qr = QtWidgets.QLabel()
         self.lbl_bank_qr.setFixedSize(150, 150)
         self.lbl_bank_qr.setScaledContents(True)
@@ -131,12 +134,14 @@ class LicenseManagerDialog(QtWidgets.QDialog):
             QtWidgets.QMessageBox.warning(self, "Lỗi", "Vui lòng nhập mã license mới.")
             return
         try:
-            # Luôn dùng device_uid của máy hiện tại
-            self.cloud.license_activate(key, stable_device_uid(), "MyPC")
+            device_name = platform.node() or "Unknown PC"
+            self.cloud.license_activate(key, stable_device_uid(), device_name)
             QtWidgets.QMessageBox.information(self, "Thành công", "Gia hạn / Kích hoạt thành công!")
             self.load_license_status()
             self.le_key_renew.clear()
-            self.parent()._license_controller.refresh()  # Yêu cầu banner chính refresh
+            # Yêu cầu cửa sổ chính refresh lại banner
+            if hasattr(self.parent(), '_license_controller'):
+                self.parent()._license_controller.refresh()
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, "Lỗi", f"Thao tác thất bại: {e}")
 
@@ -165,7 +170,6 @@ class LicenseManagerDialog(QtWidgets.QDialog):
         if not url:
             label_widget.setText("Không có ảnh QR")
             return
-        # Chạy việc tải ảnh trong một thread riêng để không làm treo UI
         thread = DownloadThread(url, self)
         thread.finished.connect(
             lambda pixmap: label_widget.setPixmap(pixmap) if pixmap else label_widget.setText("Lỗi tải ảnh"))
@@ -173,62 +177,54 @@ class LicenseManagerDialog(QtWidgets.QDialog):
 
 
 class DownloadThread(QtCore.QThread):
-    finished = QtCore.Signal(QtGui.QPixmap)
+    finished = QtCore.Signal(object)
 
     def __init__(self, url, parent=None):
         super().__init__(parent)
         self.url = url
 
     def run(self):
+        pixmap = None
         try:
             response = requests.get(self.url, timeout=10)
             response.raise_for_status()
             pixmap = QtGui.QPixmap()
             pixmap.loadFromData(response.content)
-            self.finished.emit(pixmap)
         except Exception:
-            self.finished.emit(None)
+            pass
+        self.finished.emit(pixmap)
 
 
 class AccountBanner(QtWidgets.QWidget):
-    def __init__(self, cloud: CloudClient, parent=None):
+    def __init__(self, cloud: CloudClient, controller, parent=None):
         super().__init__(parent)
         self.cloud = cloud
+        self.controller = controller  # Lưu lại controller để đồng bộ state
         self._build()
 
     def _build(self):
         self.setObjectName("accountBanner")
         lay = QtWidgets.QHBoxLayout(self)
         lay.setContentsMargins(8, 6, 8, 6)
-
         self.lblEmail = ClickLabel("…")
         font = self.lblEmail.font();
         font.setBold(True);
         self.lblEmail.setFont(font)
-
         self.lblStatus = QtWidgets.QLabel("…")
-
-        # Sửa nút action thành nút "Quản lý License"
         self.btnManageLicense = QtWidgets.QPushButton("...")
         self.btnManageLicense.setCursor(QtCore.Qt.PointingHandCursor)
         self.btnManageLicense.clicked.connect(self._handle_action_click)
-
         lay.addWidget(self.lblEmail)
         lay.addSpacing(10)
         lay.addWidget(self.lblStatus, 1, QtCore.Qt.AlignLeft)
         lay.addStretch()
         lay.addWidget(self.btnManageLicense)
-
         self.menu = QtWidgets.QMenu(self)
         actChange = self.menu.addAction("Đổi mật khẩu")
         actLogout = self.menu.addAction("Đăng xuất")
-
         actChange.triggered.connect(self._change_pw)
         actLogout.triggered.connect(self._logout)
-
-        self.setStyleSheet("""
-        #accountBanner { background:#f5f5f7; border-bottom:1px solid #ddd; }
-        """)
+        self.setStyleSheet("#accountBanner { background:#f5f5f7; border-bottom:1px solid #ddd; }")
 
     def set_user_state(self, email: str | None, license_text: str, is_logged_in: bool):
         if is_logged_in:
@@ -239,7 +235,6 @@ class AccountBanner(QtWidgets.QWidget):
             except RuntimeError:
                 pass
             self.lblEmail.clicked.connect(self._open_menu)
-
             self.lblStatus.setText(license_text)
             self.btnManageLicense.setText("Quản lý License")
             self.btnManageLicense.show()
@@ -250,7 +245,6 @@ class AccountBanner(QtWidgets.QWidget):
                 self.lblEmail.clicked.disconnect()
             except RuntimeError:
                 pass
-
             self.lblStatus.setText("Vui lòng đăng nhập để sử dụng")
             self.btnManageLicense.setText("Đăng nhập")
             self.btnManageLicense.show()
@@ -265,21 +259,21 @@ class AccountBanner(QtWidgets.QWidget):
     def _logout(self):
         self.cloud.logout()
         QtWidgets.QMessageBox.information(self, "Đăng xuất", "Bạn đã đăng xuất thành công.")
-        self.parent().refresh_license()
+        self.controller.refresh()
 
     def _handle_action_click(self):
         if self.cloud.is_logged_in():
-            # Đã đăng nhập -> Mở dialog quản lý
-            dlg = LicenseManagerDialog(self.cloud, self)
+            dlg = LicenseManagerDialog(self.cloud, self.controller.main)
             dlg.exec()
-            # Sau khi dialog đóng, luôn refresh lại banner
-            self.parent().refresh_license()
+            self.controller.refresh()
         else:
-            # Chưa đăng nhập -> Mở dialog đăng nhập
+            # SỬA LỖI: AuthDialog chỉ nhận 1 tham số là parent
             dlg = AuthDialog(self)
             if dlg.exec() == QtWidgets.QDialog.Accepted:
+                # Cập nhật lại instance cloud trong controller và banner
                 self.cloud = dlg.cloud
-                self.parent().refresh_license()
+                self.controller.cloud = dlg.cloud
+                self.controller.refresh()
 
 
 class _Container(QtWidgets.QWidget):
@@ -290,8 +284,6 @@ class _Container(QtWidgets.QWidget):
         v.setSpacing(0)
         v.addWidget(banner)
         v.addWidget(content, 1)
-        self.banner = banner
-        self.content = content
 
 
 class LicenseController(QtCore.QObject):
@@ -301,17 +293,11 @@ class LicenseController(QtCore.QObject):
         self.cloud = cloud
         self.main = main_window
         self.protected_root = protected_root
-
-        self.banner = AccountBanner(cloud, main_window)
+        self.banner = AccountBanner(self.cloud, self, main_window)
         self.container = _Container(self.banner, protected_root)
-
         if isinstance(main_window, QtWidgets.QMainWindow):
             main_window.setCentralWidget(self.container)
-
-        self.container.refresh_license = self.refresh
-        # Gán controller vào main window để dialog có thể gọi lại
         main_window._license_controller = self
-
         self.refresh()
 
     def set_enabled_by_license(self, enabled: bool):
@@ -322,13 +308,12 @@ class LicenseController(QtCore.QObject):
             st = self.cloud.license_status()
             is_logged_in = st.get("logged_in", False)
             is_valid = st.get("valid", False)
-
             td = self.cloud.load_token()
             email = td.email if td else None
 
             if is_logged_in:
                 if is_valid:
-                    days = st.get("days_left")
+                    days = st.get("days_left", "N/A")
                     plan = st.get("plan") or ""
                     status_text = f"Đã kích hoạt ({plan}) — còn {days} ngày"
                     self.set_enabled_by_license(True)
@@ -339,7 +324,6 @@ class LicenseController(QtCore.QObject):
             else:
                 self.banner.set_user_state(None, "", is_logged_in=False)
                 self.set_enabled_by_license(False)
-
         except Exception as e:
             self.banner.set_user_state(None, f"Lỗi: {e}", is_logged_in=False)
             self.set_enabled_by_license(False)
