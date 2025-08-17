@@ -212,10 +212,14 @@ class CloudClient:
         self._raise_for_json_error(r)
         return r.json().get("accounts", [])
 
-    def add_game_account(self, email: str, password: str) -> dict:
-        """Thêm một tài khoản game mới và xác thực nó."""
-        payload = {"game_email": email, "game_password": password}
-        # Tăng timeout vì có cURL check
+    def add_game_account(self, data: dict) -> dict:
+        """Thêm một tài khoản game mới."""
+        # Payload giờ được lấy trực tiếp từ dictionary data
+        payload = {
+            "game_email": data.get("game_email"),
+            "game_password": data.get("game_password"),
+            "server": data.get("server")
+        }
         r = self.session.post(self._url("/api/game_accounts"), json=payload, headers=self._auth_headers(), timeout=30)
         self._raise_for_json_error(r)
         return r.json()
