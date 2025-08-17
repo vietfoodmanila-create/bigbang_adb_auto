@@ -206,7 +206,34 @@ class CloudClient:
     def change_password(self, old_password: str, new_password: str) -> dict:
         r = self.session.post(self._url(CHANGE_PASS_PATH), headers=self._auth_headers(), json={"old_password": old_password, "new_password": new_password}, timeout=REQUEST_TIMEOUT)
         self._raise_for_json_error(r); return r.json()
+    def get_game_accounts(self) -> list:
+        """Lấy danh sách tài khoản game của người dùng."""
+        r = self.session.get(self._url("/api/game_accounts"), headers=self._auth_headers(), timeout=REQUEST_TIMEOUT)
+        self._raise_for_json_error(r)
+        return r.json().get("accounts", [])
 
+    def add_game_account(self, email: str, password: str) -> dict:
+        """Thêm một tài khoản game mới và xác thực nó."""
+        payload = {"game_email": email, "game_password": password}
+        # Tăng timeout vì có cURL check
+        r = self.session.post(self._url("/api/game_accounts"), json=payload, headers=self._auth_headers(), timeout=30)
+        self._raise_for_json_error(r)
+        return r.json()
+
+    def update_game_account(self, account_id: int, data: dict) -> dict:
+        """Cập nhật thông tin một tài khoản game."""
+        url = self._url(f"/api/game_accounts/{account_id}")
+        # Tăng timeout vì có thể có cURL check
+        r = self.session.put(url, json=data, headers=self._auth_headers(), timeout=30)
+        self._raise_for_json_error(r)
+        return r.json()
+
+    def delete_game_account(self, account_id: int) -> dict:
+        """Xóa quyền sở hữu một tài khoản game."""
+        url = self._url(f"/api/game_accounts/{account_id}")
+        r = self.session.delete(url, headers=self._auth_headers(), timeout=REQUEST_TIMEOUT)
+        self._raise_for_json_error(r)
+        return r.json()
     # --- utils ---
     @staticmethod
     def _raise_for_json_error(r: requests.Response):
