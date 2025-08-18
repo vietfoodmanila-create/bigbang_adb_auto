@@ -1,9 +1,11 @@
 # flows_login.py
-# Login theo ảnh + vùng cố định, đồng bộ với flows_logout.py
+# (HOÀN CHỈNH) Dựa trên file gốc của bạn và thêm logic kiểm tra bảo trì.
+
 from __future__ import annotations
 import time
 import cv2
 import numpy as np
+
 # ====== import toàn bộ helper dùng chung từ module.py ======
 from module import (
     log_wk as _log,
@@ -55,9 +57,6 @@ GRAY_SATURATION_MAX = 25
 
 
 def _is_pixel_gray(img: np.ndarray, x: int, y: int) -> tuple[bool, str]:
-    """
-    Kiểm tra một điểm ảnh có phải màu xám không từ một ảnh đã có.
-    """
     if img is None:
         return False, "Không có ảnh"
     try:
@@ -72,44 +71,23 @@ def _is_pixel_gray(img: np.ndarray, x: int, y: int) -> tuple[bool, str]:
         return False, f"Lỗi khi kiểm tra màu pixel: {e}"
 
 
-# ------------------ bước phụ: chọn server (đặc thù login) ------------------
 def select_server(wk, server: str) -> bool:
-    """
-    Đặc thù flow login (nếu cần) → để trong file này.
-    TODO: bạn sẽ bổ sung sau bằng ảnh/vùng riêng.
-    """
-    if not server:
-        return True
+    if not server: return True
     _log(wk, f"(TODO) Chọn server: {server}")
     return True
 
 
-# === Tap 3 điểm trước khi bắt đầu login (đặc thù login)
 def _pre_login_taps(wk):
-    # Bấm 3 điểm để đóng tips/ads, mở bàn phím, v.v.
     seq = [(690, 650, 0.15), (693, 758, 0.15), (690, 650, 0.15)]
     for x, y, delay in seq:
         if _aborted(wk): break
         _tap(wk, x, y)
+        # Sử dụng _sleep_coop để an toàn
         _sleep_coop(wk, delay)
 
 
-# ------------------ login pipeline ------------------
 def login_once(wk, email: str, password: str, server: str = "", date: str = "") -> bool:
-    """
-    Tiến trình login (đặc thù):
-      - Đảm bảo đang ở màn hình login (caller nên gọi logout trước, nhưng vẫn tự check)
-      - Tap 3 điểm
-      - Clear & nhập email/password
-      - (tuỳ chọn) chọn server
-      - Nhấn Login
-      - Khi không thấy cặp 'ĐÃ ĐĂNG NHẬP' + 'VÀO GAME' → ưu tiên đóng 'thông báo', nếu không thì thử 'XÁC NHẬN ĐĂNG NHẬP'
-      - Nếu báo offline → xác nhận
-      - Chờ icon liên minh → OK
-    """
-    if _aborted(wk):
-        _log(wk, "⛔ Hủy trước khi login.")
-        return False
+    if _aborted(wk): _log(wk, "⛔ Hủy trước khi login."); return False
     _log(wk, "Bắt đầu LOGIN…")
 
     # Nếu không ở need_login, thử back nhẹ vài lần để lộ form
@@ -117,12 +95,10 @@ def login_once(wk, email: str, password: str, server: str = "", date: str = "") 
     if st != "need_login":
         _log(wk, f"State hiện tại: {st} → BACK 2 lần cho về form.")
         _back(wk, times=2, wait_each=0.4)
-        if not _sleep_coop(wk, 0.6):
-            return False
+        if not _sleep_coop(wk, 0.6): return False
 
     _pre_login_taps(wk)
-    if _aborted(wk):
-        return False
+    if _aborted(wk): return False
 
     # 1) Clear & nhập email
     img = _grab_screen_np(wk)
@@ -131,14 +107,11 @@ def login_once(wk, email: str, password: str, server: str = "", date: str = "") 
     free_img(img)
     if ok and pt:
         _tap(wk, *pt)
-        if not _sleep_coop(wk, 0.2):
-            return False
+        if not _sleep_coop(wk, 0.2): return False
     _tap_center(wk, REG_EMAIL_EMPTY)
-    if not _sleep_coop(wk, 0.2):
-        return False
+    if not _sleep_coop(wk, 0.2): return False
     _type_text(wk, email)
-    if not _sleep_coop(wk, 0.2):
-        return False
+    if not _sleep_coop(wk, 0.2): return False
 
     # 2) Clear & nhập password
     img = _grab_screen_np(wk)
@@ -147,21 +120,17 @@ def login_once(wk, email: str, password: str, server: str = "", date: str = "") 
     free_img(img)
     if ok and pt:
         _tap(wk, *pt)
-        if not _sleep_coop(wk, 0.2):
-            return False
+        if not _sleep_coop(wk, 0.2): return False
     _tap_center(wk, REG_PASSWORD_EMPTY)
-    if not _sleep_coop(wk, 0.2):
-        return False
+    if not _sleep_coop(wk, 0.2): return False
     _type_text(wk, password)
-    if not _sleep_coop(wk, 0.2):
-        return False
+    if not _sleep_coop(wk, 0.2): return False
 
     # 3) (tuỳ chọn) chọn server
     if not select_server(wk, server):
-        _log(wk, "Chọn server thất bại.")
+        _log(wk, "Chọn server thất bại.");
         return False
-    if _aborted(wk):
-        return False
+    if _aborted(wk): return False
 
     # 4) Nhấn Login
     img = _grab_screen_np(wk)
@@ -173,10 +142,10 @@ def login_once(wk, email: str, password: str, server: str = "", date: str = "") 
     else:
         _log(wk, "Không thấy ảnh login_button → tap trung tâm vùng.")
         _tap_center(wk, REG_LOGIN_BUTTON)
-    if not _sleep_coop(wk, 1.0):
-        return False
+    if not _sleep_coop(wk, 1.0): return False
 
-    # ===== 5) PHA "VÀO GAME" (LOGIC ĐÃ KHÔI PHỤC) =====
+    # ===== 5) PHA "VÀO GAME" (LOGIC ĐÚNG) =====
+    pressed_once = False
     phase_deadline = time.time() + 60
 
     def _both_buttons(img_now):
@@ -196,36 +165,48 @@ def login_once(wk, email: str, password: str, server: str = "", date: str = "") 
 
         ok_da, ok_game, pt_game = _both_buttons(img)
 
-        # Nếu thấy cả 2 nút, kiểm tra bảo trì rồi bấm (bấm lại nếu cần)
         if ok_da and ok_game:
             is_gray, msg = _is_pixel_gray(img, 263, 1115)
             _log(wk, msg)
-
             if is_gray:
-                _log(wk, "⚠️ Phát hiện trò chơi đang bảo trì. Tạm dừng.")
-                free_img(img)
+                _log(wk, "⚠️ Phát hiện trò chơi đang bảo trì.")
+                free_img(img);
                 return False
-
             if pt_game:
-                _log(wk, f"Nhấn 'Vào Game' tại tọa độ {pt_game}...")
-                _tap(wk, *pt_game)
+                _tap(wk, *pt_game);
+                pressed_once = True
+                free_img(img);
+                if not _sleep_coop(wk, 2.0): return False
+                continue
+
+        # (LOGIC ĐẦY ĐỦ) Xử lý các popup khi 2 nút chính không có
+        if not ok_da and not ok_game:
+            ok_tb, _, _ = find_on_frame(img, IMG_THONG_BAO, region=REG_THONG_BAO, threshold=0.86)
+            if ok_tb:
+                _log(wk, "Thấy 'thong-bao' → đang đóng...")
+                _tap(wk, 443, 1300);
                 free_img(img)
                 if not _sleep_coop(wk, 1.5): return False
                 continue
-            else:
-                _log(wk, "⚠️ Tìm thấy các nút nhưng không lấy được tọa độ 'Vào Game'.")
 
-        # Nếu không thấy cả 2 nút nữa, thoát vòng lặp để sang bước tiếp theo
-        elif not ok_da and not ok_game:
-            _log(wk, "Các nút đã biến mất. Chuyển sang bước tiếp theo.")
-            free_img(img)
-            break
+            ok_xn, pt_xn, _ = find_on_frame(img, IMG_XAC_NHAN_DANG_NHAP, region=REG_XAC_NHAN_DANG_NHAP, threshold=0.86)
+            if ok_xn and pt_xn:
+                _log(wk, "Thấy 'xac_nhan_dang_nhap' -> đang bấm...")
+                _tap(wk, *pt_xn);
+                free_img(img)
+                if not _sleep_coop(wk, 1.0): return False
+                continue
 
-        # Nếu chỉ thấy 1 trong 2 nút (trạng thái chuyển tiếp), cứ chờ
+            # Nếu đã từng bấm nút "Vào Game" thì thoát vòng lặp
+            if pressed_once:
+                _log(wk, "Các nút đã biến mất sau khi nhấn. Chuyển sang bước tiếp theo.")
+                free_img(img)
+                break
+
         free_img(img)
         if not _sleep_coop(wk, 0.5): return False
 
-    # ===== 6) Kiểm tra 'xác nhận offline' một vài nhịp ngắn (nếu có) =====
+    # ===== 6) Kiểm tra 'xác nhận offline' =====
     for _ in range(5):
         if _aborted(wk): return False
         img = _grab_screen_np(wk)
@@ -238,7 +219,7 @@ def login_once(wk, email: str, password: str, server: str = "", date: str = "") 
             break
         if not _sleep_coop(wk, 0.5): return False
 
-    # ===== 7) Đợi vào game (KHÔNG bấm ESC trong giai đoạn chờ) =====
+    # ===== 7) Đợi vào game =====
     end = time.time() + 60
     while time.time() < end:
         if _aborted(wk): return False

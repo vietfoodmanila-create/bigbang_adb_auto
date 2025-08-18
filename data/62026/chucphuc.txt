@@ -1,5 +1,0 @@
-{
-  "cooldown_hours": 0,
-  "per_run": 0,
-  "items": []
-}

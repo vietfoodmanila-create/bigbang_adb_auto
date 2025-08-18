@@ -1,5 +1,5 @@
 # checkbox_actions.py
-# (NÂNG CẤP LỚN) Sửa lỗi TypeError và tối ưu hóa vòng lặp auto.
+# (HOÀN CHỈNH) Đã online hóa hoàn toàn chức năng Chúc phúc.
 
 from __future__ import annotations
 import os
@@ -36,6 +36,48 @@ def _table_row_for_port(ctrl, port: int) -> int:
             return r
     return -1
 
+
+def _plan_online_blessings(accounts_selected: List[Dict], config: Dict, targets: List[Dict],
+                           accounts_already_running: List[str]) -> Dict[str, List[Dict]]:
+    """
+    (CẬP NHẬT) Lập kế hoạch Chúc phúc, ưu tiên các tài khoản đã có nhiệm vụ khác.
+    """
+    plan = {}
+    per_run = config.get('per_run', 0)
+    cooldown_h = config.get('cooldown_hours', 0)
+    if per_run <= 0 or not targets or not accounts_selected:
+        return {}
+
+    now = datetime.now()
+
+    due_targets = []
+    for target in targets:
+        last_run_dt = _parse_datetime_str(target.get('last_blessed_run_at'))
+        if not last_run_dt or (now - last_run_dt) >= timedelta(hours=cooldown_h):
+            due_targets.append(target)
+
+    if not due_targets:
+        return {}
+
+    # Tạo danh sách các tài khoản có thể chúc phúc, ưu tiên những tài khoản đã có nhiệm vụ
+    priority_emails = [email for email in accounts_already_running]
+    other_emails = [acc.get('game_email') for acc in accounts_selected if acc.get('game_email') not in priority_emails]
+    available_emails = priority_emails + other_emails
+
+    for target in due_targets:
+        blessed_today_emails = {item.get('game_email') for item in target.get('blessed_today_by', [])}
+        needed = per_run - len(blessed_today_emails)
+        if needed <= 0: continue
+
+        for email in available_emails:
+            if needed <= 0: break
+            if email not in blessed_today_emails:
+                if email not in plan: plan[email] = []
+                if not any(t['id'] == target['id'] for t in plan[email]):
+                    plan[email].append({'id': target['id'], 'name': target.get('target_name')})
+                    blessed_today_emails.add(email)
+                    needed -= 1
+    return plan
 
 def _get_ui_state(ctrl, row: int) -> str:
     it = ctrl.w.tbl_nox.item(row, 3)
@@ -229,27 +271,65 @@ class AccountRunner(QObject, threading.Thread):
         )
 
     def run(self):
-        self.log(f"Bắt đầu vòng lặp auto với {len(self.master_account_list)} tài khoản đã chọn.")
+        self.log("Bắt đầu vòng lặp auto liên tục.")
 
         while not self._stop.is_set():
             try:
-                features = self._get_features()
-                eligible_accounts = _scan_eligible_accounts(self.master_account_list, features)
-
-                if not eligible_accounts:
-                    self.log("Không có tài khoản nào đủ điều kiện chạy. Tạm nghỉ 1 giờ...")
-                    if not self._sleep_coop(3600): break
-                    try:
-                        self.log("Đang làm mới danh sách tài khoản sau khi nghỉ...")
-                        self.master_account_list = self.cloud.get_game_accounts()
-                    except Exception as e:
-                        self.log(f"Lỗi làm mới danh sách: {e}. Sẽ thử lại sau.")
+                # Bước 1: Cập nhật lại danh sách tài khoản từ server
+                # Thao tác này đảm bảo mỗi vòng lặp đều có dữ liệu mới nhất
+                try:
+                    self.log("Đang làm mới danh sách tài khoản từ server...")
+                    # Lấy danh sách ID của các tài khoản đã chọn ban đầu
+                    selected_ids = {acc.get('id') for acc in self.master_account_list}
+                    # Tải lại toàn bộ danh sách từ server và chỉ giữ lại những tài khoản đã chọn
+                    all_accounts_fresh = self.cloud.get_game_accounts()
+                    self.master_account_list = [acc for acc in all_accounts_fresh if acc.get('id') in selected_ids]
+                except Exception as e:
+                    self.log(f"Lỗi làm mới danh sách tài khoản: {e}. Tạm nghỉ 1 phút.")
+                    if not self._sleep_coop(60): break
                     continue
 
-                rec = eligible_accounts[0]
-                self.log(
-                    f"Lọc tự động: {len(eligible_accounts)} tài khoản đủ điều kiện. Bắt đầu xử lý: {rec.get('game_email')}")
+                # Bước 2: Lập kế hoạch độc lập
+                features = self._get_features()
 
+                # 2.1 Lập kế hoạch cho Build/Expedition
+                eligible_for_build_expe = _scan_eligible_accounts(self.master_account_list, features)
+                emails_for_build_expe = {acc.get('game_email') for acc in eligible_for_build_expe}
+
+                # 2.2 Lập kế hoạch cho Chúc phúc
+                bless_plan = {}
+                if features.get("bless"):
+                    self.log("Đang lập kế hoạch Chúc phúc từ dữ liệu server...")
+                    try:
+                        bless_config = self.cloud.get_blessing_config()
+                        bless_targets = self.cloud.get_blessing_targets()
+                        # Ưu tiên các tài khoản đã có nhiệm vụ build/expe
+                        priority_emails = list(emails_for_build_expe)
+                        bless_plan = _plan_online_blessings(self.master_account_list, bless_config, bless_targets,
+                                                            priority_emails)
+                        if bless_plan:
+                            self.log(f"Đã lập kế hoạch Chúc phúc cho {len(bless_plan)} tài khoản.")
+                    except Exception as e:
+                        self.log(f"Lỗi lập kế hoạch Chúc phúc: {e}")
+
+                # Bước 3: Tổng hợp danh sách và kiểm tra
+                emails_for_bless = set(bless_plan.keys())
+                all_emails_to_run = emails_for_build_expe.union(emails_for_bless)
+
+                if not all_emails_to_run:
+                    self.log("Không có tài khoản nào đủ điều kiện chạy. Tạm nghỉ 1 giờ...")
+                    if not self._sleep_coop(3600): break
+                    continue
+
+                # Bước 4: Tạo danh sách cuối cùng để chạy và chọn tài khoản tiếp theo
+                accounts_to_run_this_loop = [acc for acc in self.master_account_list if
+                                             acc.get('game_email') in all_emails_to_run]
+
+                rec = accounts_to_run_this_loop[0]  # Luôn chạy tài khoản đầu tiên trong danh sách tổng hợp
+                self.log(
+                    f"Tổng hợp: {len(accounts_to_run_this_loop)} tài khoản có nhiệm vụ. Bắt đầu xử lý: {rec.get('game_email')}")
+
+                # --- Thực thi tác vụ cho 1 tài khoản ---
                 account_id = rec.get('id')
                 email = rec.get('game_email', '')
                 encrypted_password = rec.get('game_password', '')
@@ -274,21 +354,43 @@ class AccountRunner(QObject, threading.Thread):
                 did_build = False;
                 did_expe = False
 
-                if (features.get("build") or features.get("expedition")) and _leave_cooldown_passed(
-                        rec.get('last_leave_time')):
-                    join_guild_once(self.wk, log=self.log)
+                # Chạy Chúc phúc NẾU tài khoản này có trong kế hoạch
+                if email in bless_plan:
+                    targets_to_bless_info = bless_plan[email]
+                    target_names = [t['name'] for t in targets_to_bless_info]
+                    self.log(f"Tài khoản {email} có nhiệm vụ Chúc phúc cho: {', '.join(target_names)}")
 
-                if features.get("build") and rec.get('last_build_date') != _today_str_for_build():
-                    if ensure_guild_inside(self.wk, log=self.log) and run_guild_build_flow(self.wk, log=self.log):
-                        did_build = True
-                        self.cloud.update_game_account(account_id, {'last_build_date': _today_str_for_build()})
-                        self.log(f"📝 [API] Cập nhật ngày xây dựng.")
+                    blessed_ok_names = run_bless_flow(self.wk, target_names, log=self.log)
 
-                if features.get("expedition") and _expe_cooldown_passed(rec.get('last_expedition_time')):
-                    if ensure_guild_inside(self.wk, log=self.log) and run_guild_expedition_flow(self.wk, log=self.log):
-                        did_expe = True
-                        self.cloud.update_game_account(account_id, {'last_expedition_time': _now_dt_str_for_api()})
-                        self.log(f"📝 [API] Cập nhật mốc viễn chinh.")
+                    if blessed_ok_names:
+                        for name in blessed_ok_names:
+                            for target_info in targets_to_bless_info:
+                                if target_info['name'] == name:
+                                    try:
+                                        self.cloud.record_blessing(target_info['id'], account_id)
+                                        self.log(f"📝 [API] Đã ghi lại lịch sử Chúc phúc cho '{name}'.")
+                                    except Exception as e:
+                                        self.log(f"⚠️ [API] Lỗi ghi lịch sử Chúc phúc: {e}")
+                                    break
+
+                # Chạy Build/Expedition NẾU tài khoản này có trong danh sách eligible
+                if email in emails_for_build_expe:
+                    if (features.get("build") or features.get("expedition")) and _leave_cooldown_passed(
+                            rec.get('last_leave_time')):
+                        join_guild_once(self.wk, log=self.log)
+
+                    if features.get("build") and rec.get('last_build_date') != _today_str_for_build():
+                        if ensure_guild_inside(self.wk, log=self.log) and run_guild_build_flow(self.wk, log=self.log):
+                            did_build = True
+                            self.cloud.update_game_account(account_id, {'last_build_date': _today_str_for_build()})
+                            self.log(f"📝 [API] Cập nhật ngày xây dựng.")
+
+                    if features.get("expedition") and _expe_cooldown_passed(rec.get('last_expedition_time')):
+                        if ensure_guild_inside(self.wk, log=self.log) and run_guild_expedition_flow(self.wk,
+                                                                                                    log=self.log):
+                            did_expe = True
+                            self.cloud.update_game_account(account_id, {'last_expedition_time': _now_dt_str_for_api()})
+                            self.log(f"📝 [API] Cập nhật mốc viễn chinh.")
 
                 if features.get("autoleave") and (did_build or did_expe):
                     if run_guild_leave_flow(self.wk, log=self.log):
@@ -296,13 +398,6 @@ class AccountRunner(QObject, threading.Thread):
                         self.log(f"📝 [API] Cập nhật mốc rời liên minh.")
 
                 logout_once(self.wk, max_rounds=7)
-
-                try:
-                    # Tải lại toàn bộ danh sách để đảm bảo chính xác cho vòng lặp sau
-                    self.master_account_list = self.cloud.get_game_accounts()
-                    self.log("Đã làm mới bộ nhớ đệm tài khoản sau khi chạy.")
-                except Exception as e:
-                    self.log(f"Lỗi làm mới bộ nhớ đệm: {e}")
 
             except Exception as e:
                 self.log(f"Lỗi nghiêm trọng trong vòng lặp: {e}. Tạm nghỉ 5 phút.")

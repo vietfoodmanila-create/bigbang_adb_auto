@@ -24,12 +24,12 @@ from webdriver_manager.chrome import ChromeDriverManager
 import requests
 
 from PySide6.QtCore import Qt, QPoint
-from PySide6.QtGui import QCloseEvent
+from PySide6.QtGui import QCloseEvent, QTextCursor
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QSplitter, QVBoxLayout, QHBoxLayout,
     QTableWidget, QTableWidgetItem, QHeaderView, QCheckBox,
     QTabWidget, QGroupBox, QFormLayout, QTextEdit, QLabel, QMessageBox, QPushButton,
-    QAbstractItemView, QMenu, QLineEdit, QDialog, QDialogButtonBox
+    QAbstractItemView, QMenu, QLineEdit, QDialog, QDialogButtonBox, QInputDialog
 )
 from ui_auth import CloudClient
 from ui_license import AccountBanner
@@ -44,15 +44,14 @@ DEFAULT_HEIGHT = 900
 
 GAME_LOGIN_URL = "https://pay.bigbangthoikhong.vn/login?game_id=105"
 
-ACC_HEADERS_VISIBLE = ["", "Email", "Trạng thái", "Sửa", "Xóa"]
+ACC_HEADERS_VISIBLE = ["", "Email", "Xem", "Sửa", "Xóa"]
 ACC_COL_CHECK, ACC_COL_EMAIL, ACC_COL_STATUS, ACC_COL_EDIT, ACC_COL_DELETE = range(5)
 
-BLESS_HEADERS_VISIBLE = ["Tên nhân vật", "Lần cuối (yyyymmdd:hh)"]
+BLESS_HEADERS_VISIBLE = ["Tên nhân vật", "Lần cuối chạy"]
 BLESS_COL_NAME, BLESS_COL_LAST = range(2)
-BLESS_MAX_ITEMS_RENDER = 20
 
 
-# ---------------- Helpers ----------------
+# ---------------- Helpers & Dialogs ----------------
 def _run_quiet(cmd: list[str], timeout: int = 8) -> str:
     try:
         startupinfo = None
@@ -96,12 +95,7 @@ def list_known_ports_from_data() -> List[int]:
     return ports
 
 
-# (HOÀN CHỈNH) Tích hợp hàm kiểm tra mật khẩu đã hoạt động thành công
 def check_game_login_client_side(email: str, password: str) -> tuple[bool, str]:
-    """
-    Sử dụng Selenium với cơ chế chờ đợi thông minh (WebDriverWait) để tương tác
-    với các phần tử được tạo ra bởi JavaScript.
-    """
     chrome_options = webdriver.ChromeOptions()
     chrome_options.add_argument("--start-maximized")
     chrome_options.add_argument("--log-level=3")
@@ -114,27 +108,21 @@ def check_game_login_client_side(email: str, password: str) -> tuple[bool, str]:
         driver = webdriver.Chrome(service=service, options=chrome_options)
         driver.get(GAME_LOGIN_URL)
         wait = WebDriverWait(driver, 20)
-
+        wait.until(EC.frame_to_be_available_and_switch_to_it((By.TAG_NAME, "iframe")))
         email_field = wait.until(EC.visibility_of_element_located((By.NAME, "username")))
         password_field = driver.find_element(By.NAME, "password")
-
-        email_field.clear()
         email_field.send_keys(email)
-        password_field.clear()
         password_field.send_keys(password)
         time.sleep(0.5)
-
-        login_button = driver.find_element(By.CSS_SELECTOR, "form button[type='submit']")
+        login_button = driver.find_element(By.XPATH, "//span[contains(text(), 'Đăng Nhập')]")
         login_button.click()
-
-        wait.until(lambda d: "login" not in d.current_url.lower())
-
+        driver.switch_to.default_content()
+        WebDriverWait(driver, 15).until(lambda d: "login" not in d.current_url.lower())
         final_url = driver.current_url
         if "rechargepackage" in final_url.lower():
             return True, "Xác thực thành công!"
         else:
             return False, f"Chuyển hướng đến trang không mong đợi: {final_url}"
-
     except TimeoutException:
         try:
             if driver and (
@@ -142,7 +130,7 @@ def check_game_login_client_side(email: str, password: str) -> tuple[bool, str]:
                 return False, "Thông tin đăng nhập không chính xác."
         except:
             pass
-        return False, "Hết thời gian chờ. Trang web không phản hồi như mong đợi."
+        return False, "Hết thời gian chờ, trang web không phản hồi như mong đợi."
     except Exception as e:
         return False, f"Lỗi Selenium: {e}"
     finally:
@@ -153,31 +141,31 @@ def check_game_login_client_side(email: str, password: str) -> tuple[bool, str]:
 class AccountDialog(QDialog):
     def __init__(self, account_data: dict = None, parent=None):
         super().__init__(parent)
-        self.account_data = account_data;
+        self.account_data = account_data
         self.is_edit_mode = account_data is not None
-        self.setWindowTitle("Sửa tài khoản" if self.is_edit_mode else "Thêm tài khoản mới");
+        self.setWindowTitle("Sửa tài khoản" if self.is_edit_mode else "Thêm tài khoản mới")
         self.setMinimumWidth(400)
-        layout = QVBoxLayout(self);
+        layout = QVBoxLayout(self)
         form_layout = QFormLayout()
-        self.email_edit = QLineEdit();
-        self.password_edit = QLineEdit();
-        self.password_edit.setEchoMode(QLineEdit.Password);
+        self.email_edit = QLineEdit()
+        self.password_edit = QLineEdit()
+        self.password_edit.setEchoMode(QLineEdit.Password)
         self.server_edit = QLineEdit()
         if self.is_edit_mode:
-            self.email_edit.setText(self.account_data.get("game_email", ""));
+            self.email_edit.setText(self.account_data.get("game_email", ""))
             self.email_edit.setReadOnly(True)
-            self.server_edit.setText(str(self.account_data.get("server", "")));
+            self.server_edit.setText(str(self.account_data.get("server", "")))
             self.password_edit.setPlaceholderText("Nhập mật khẩu mới nếu muốn thay đổi")
         else:
-            self.email_edit.setPlaceholderText("Nhập email game");
-            self.password_edit.setPlaceholderText("Nhập mật khẩu game");
+            self.email_edit.setPlaceholderText("Nhập email game")
+            self.password_edit.setPlaceholderText("Nhập mật khẩu game")
             self.server_edit.setPlaceholderText("Nhập server (mặc định: 8)")
-        form_layout.addRow("Email:", self.email_edit);
-        form_layout.addRow("Mật khẩu:", self.password_edit);
+        form_layout.addRow("Email:", self.email_edit)
+        form_layout.addRow("Mật khẩu:", self.password_edit)
         form_layout.addRow("Server:", self.server_edit)
         layout.addLayout(form_layout)
         self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        self.buttons.accepted.connect(self.accept);
+        self.buttons.accepted.connect(self.accept)
         self.buttons.rejected.connect(self.reject)
         layout.addWidget(self.buttons)
 
@@ -197,6 +185,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(420, 760)
         self.active_port: Optional[int] = None
         self.online_accounts: List[Dict] = []
+        self.blessing_targets: List[Dict] = []
         self._is_closing = False
 
         main_widget = QWidget()
@@ -245,11 +234,12 @@ class MainWindow(QMainWindow):
         acc_layout.addLayout(acc_toolbar)
         self.tbl_acc = QTableWidget(0, len(ACC_HEADERS_VISIBLE));
         self.tbl_acc.setHorizontalHeaderLabels(ACC_HEADERS_VISIBLE)
-        self.tbl_acc.horizontalHeader().setSectionResizeMode(ACC_COL_CHECK, QHeaderView.ResizeToContents);
-        self.tbl_acc.horizontalHeader().setSectionResizeMode(ACC_COL_EMAIL, QHeaderView.Stretch)
-        self.tbl_acc.horizontalHeader().setSectionResizeMode(ACC_COL_STATUS, QHeaderView.ResizeToContents);
+        self.tbl_acc.horizontalHeader().setSectionResizeMode(ACC_COL_CHECK, QHeaderView.ResizeToContents)
+        self.tbl_acc.horizontalHeader().setSectionResizeMode(ACC_COL_STATUS, QHeaderView.ResizeToContents)
         self.tbl_acc.horizontalHeader().setSectionResizeMode(ACC_COL_EDIT, QHeaderView.ResizeToContents)
         self.tbl_acc.horizontalHeader().setSectionResizeMode(ACC_COL_DELETE, QHeaderView.ResizeToContents)
+        self.tbl_acc.horizontalHeader().setSectionResizeMode(ACC_COL_EMAIL, QHeaderView.Stretch)
+
         self.tbl_acc.setEditTriggers(QAbstractItemView.NoEditTriggers);
         acc_layout.addWidget(self.tbl_acc);
         self.tabs.addTab(w_acc, "Accounts")
@@ -309,12 +299,13 @@ class MainWindow(QMainWindow):
 
         self.tbl_nox.itemSelectionChanged.connect(self.on_nox_selection_changed)
         self.btn_acc_add.clicked.connect(self.on_add_account);
-        self.btn_acc_refresh.clicked.connect(self.load_accounts_current_port);
+        self.btn_acc_refresh.clicked.connect(self.load_and_sync_accounts);
         self.chk_select_all_accs.toggled.connect(self.on_select_all_accounts)
-        self.btn_bless_add.clicked.connect(self.bless_add);
-        self.btn_bless_del.clicked.connect(self.bless_del);
-        self.btn_bless_load.clicked.connect(self.load_bless_current_port);
-        self.btn_bless_save.clicked.connect(self.save_bless_current_port)
+
+        self.btn_bless_add.clicked.connect(self.bless_add_online);
+        self.btn_bless_del.clicked.connect(self.bless_del_online);
+        self.btn_bless_load.clicked.connect(self.load_bless_online);
+        self.btn_bless_save.clicked.connect(self.save_bless_config_online)
 
         self.refresh_nox()
         if self.tbl_nox.rowCount() > 0: self.tbl_nox.selectRow(0)
@@ -378,49 +369,37 @@ class MainWindow(QMainWindow):
 
     def on_nox_selection_changed(self):
         port = self.get_current_port()
-        if port is None: self.tbl_acc.setRowCount(0); self.tbl_bless.setRowCount(0); return
+        if port is None:
+            self.tbl_acc.setRowCount(0);
+            self.tbl_bless.setRowCount(0);
+            return
         if port != self.active_port:
             self.active_port = port;
             self.log_msg(f"Đã chọn máy ảo port {port}.")
-            self.load_accounts_current_port();
-            self.load_bless_for_port(port)
+            self.load_and_sync_accounts();
+            self.load_bless_online()
 
     def load_and_sync_accounts(self):
-        """(CẬP NHẬT) Chỉ tải DS từ API và cập nhật bộ nhớ đệm, không ghi file."""
         if self.active_port is None:
-            self.online_accounts = []
-            self.populate_accounts_table()
+            self.online_accounts = [];
+            self.populate_accounts_table();
             return
-
         try:
             self.log_msg("Đang tải và làm mới danh sách tài khoản từ server...")
             QApplication.setOverrideCursor(Qt.WaitCursor)
-
-            # Tải dữ liệu mới nhất từ API và lưu vào bộ nhớ đệm
             self.online_accounts = self.cloud.get_game_accounts()
-            # Cập nhật lại giao diện bảng
             self.populate_accounts_table()
-
             self.log_msg(f"Đã làm mới {len(self.online_accounts)} tài khoản.")
-
         except Exception as e:
-            self.online_accounts = []
+            self.online_accounts = [];
             self.populate_accounts_table()
             self.log_msg(f"Lỗi tải và làm mới DS tài khoản: {e}")
             QMessageBox.critical(self, "Lỗi API", f"Không thể tải danh sách tài khoản:\n{e}")
         finally:
             QApplication.restoreOverrideCursor()
+
     def load_accounts_current_port(self):
-        if self.active_port is None: return
-        try:
-            self.log_msg(f"Đang tải DS tài khoản...");
-            self.online_accounts = self.cloud.get_game_accounts()
-            self.populate_accounts_table()
-        except Exception as e:
-            self.online_accounts = [];
-            self.populate_accounts_table()
-            self.log_msg(f"Lỗi tải DS tài khoản: {e}");
-            QMessageBox.critical(self, "Lỗi API", f"Không thể tải danh sách tài khoản:\n{e}")
+        self.load_and_sync_accounts()
 
     def populate_accounts_table(self):
         self.tbl_acc.setRowCount(0)
@@ -435,73 +414,71 @@ class MainWindow(QMainWindow):
             chk_layout.setContentsMargins(0, 0, 0, 0);
             self.tbl_acc.setCellWidget(row, ACC_COL_CHECK, chk_widget)
             self.tbl_acc.setItem(row, ACC_COL_EMAIL, QTableWidgetItem(row_data.get('game_email', '')))
-            status_text = "OK" if row_data.get('status') == 'ok' else "Sai Pass";
-            btn_info = QPushButton(status_text);
-            btn_info.setToolTip("Xem chi tiết thông tin");
-            btn_info.clicked.connect(lambda c, r=row: self.on_info_account(r));
+            # Cột 2: Status (Info button) với icon và màu nền
+            btn_info = QPushButton("🔍")  # Biểu tượng kính lúp
+            btn_info.setFixedSize(32, 32)  # Đặt kích thước vuông
+            btn_info.setToolTip("Xem chi tiết thông tin")
+            status = row_data.get('status', 'ok')
+            if status == 'ok':
+                btn_info.setStyleSheet("background-color: #e8f5e9; color: #388e3c;")
+            else:  # bad_password
+                btn_info.setStyleSheet("background-color: #f5f5f5; color: #616161;")
+            btn_info.clicked.connect(lambda c, r=row: self.on_info_account(r))
             self.tbl_acc.setCellWidget(row, ACC_COL_STATUS, btn_info)
-            btn_edit = QPushButton("Sửa");
-            btn_edit.setToolTip("Sửa thông tin tài khoản");
-            btn_edit.clicked.connect(lambda c, r=row: self.on_edit_account(r));
+            self.tbl_acc.setCellWidget(row, ACC_COL_STATUS, btn_info)
+
+            # Cột 3: Edit button với icon và màu nền
+            btn_edit = QPushButton("✏️")  # Biểu tượng bút chì
+            btn_edit.setFixedSize(32, 32)  # Đặt kích thước vuông
+            btn_edit.setToolTip("Sửa thông tin tài khoản")
+            btn_edit.setStyleSheet("background-color: #e3f2fd; color: #1976d2;")
+            btn_edit.clicked.connect(lambda c, r=row: self.on_edit_account(r))
             self.tbl_acc.setCellWidget(row, ACC_COL_EDIT, btn_edit)
-            btn_delete = QPushButton("Xóa");
-            btn_delete.setToolTip("Xóa tài khoản khỏi danh sách");
-            btn_delete.clicked.connect(lambda c, r=row: self.on_delete_account(r));
+
+            # Cột 4: Delete button với icon và màu nền
+            btn_delete = QPushButton("🗑️")  # Biểu tượng thùng rác
+            btn_delete.setFixedSize(32, 32)  # Đặt kích thước vuông
+            btn_delete.setToolTip("Xóa tài khoản khỏi danh sách")
+            btn_delete.setStyleSheet("background-color: #ffebee; color: #c62828;")
+            btn_delete.clicked.connect(lambda c, r=row: self.on_delete_account(r))
             self.tbl_acc.setCellWidget(row, ACC_COL_DELETE, btn_delete)
         self.log_msg(f"Đã hiển thị {len(self.online_accounts)} tài khoản.")
 
     def on_add_account(self):
         dialog = AccountDialog(parent=self)
         if dialog.exec() == QDialog.Accepted:
-            new_data = dialog.get_data()
-            email = new_data.get("game_email")
+            new_data = dialog.get_data();
+            email = new_data.get("game_email");
             password = new_data.get("game_password")
-
-            if not email or not password:
-                QMessageBox.warning(self, "Thiếu thông tin", "Vui lòng nhập đầy đủ email và mật khẩu.");
-                return
-
-            # Kiểm tra xem email đã tồn tại trong danh sách hay chưa
+            if not email or not password: QMessageBox.warning(self, "Thiếu thông tin",
+                                                              "Vui lòng nhập đầy đủ email và mật khẩu."); return
             existing_emails = [acc.get('game_email', '').lower() for acc in self.online_accounts]
             if email.lower() in existing_emails:
                 QMessageBox.warning(self, "Tài khoản đã tồn tại", f"Tài khoản '{email}' đã có trong danh sách của bạn.")
-                self.log_msg(f"Thao tác thêm bị hủy: tài khoản {email} đã tồn tại.")
+                self.log_msg(f"Thao tác thêm bị hủy: tài khoản {email} đã tồn tại.");
                 return
-
-            # Bước 1: Xác thực mật khẩu plaintext với Selenium
             self.log_msg(f"Đang mở trình duyệt để xác thực tài khoản {email}...")
             QApplication.setOverrideCursor(Qt.WaitCursor)
             success, message = check_game_login_client_side(email, password)
             QApplication.restoreOverrideCursor()
-
-            if not success:
-                self.log_msg(f"Xác thực thất bại: {message}")
-                QMessageBox.critical(self, "Xác thực thất bại", message);
-                return
-
-            # Bước 2: Mã hóa mật khẩu trước khi gửi đi
+            if not success: self.log_msg(f"Xác thực thất bại: {message}"); QMessageBox.critical(self,
+                                                                                                "Xác thực thất bại",
+                                                                                                message); return
             self.log_msg("Xác thực thành công! Đang mã hóa và gửi dữ liệu lên server...")
             try:
                 user_login_email = self.cloud.load_token().email
-                if not user_login_email:
-                    QMessageBox.critical(self, "Lỗi", "Không tìm thấy email người dùng để tạo khóa mã hóa.");
-                    return
-
+                if not user_login_email: QMessageBox.critical(self, "Lỗi",
+                                                              "Không tìm thấy email người dùng để tạo khóa mã hóa."); return
                 encrypted_password = encrypt(password, user_login_email)
-
-                data_to_send = {
-                    "game_email": email,
-                    "game_password": encrypted_password,  # Gửi pass đã mã hóa
-                    "server": new_data.get("server")
-                }
-
-                # Bước 3: Gửi dữ liệu đã mã hóa lên server
+                data_to_send = {"game_email": email, "game_password": encrypted_password,
+                                "server": new_data.get("server")}
                 self.cloud.add_game_account(data_to_send)
-                self.log_msg("Thêm tài khoản thành công! Đang làm mới và đồng bộ...")
-                self.load_and_sync_accounts()  # Tải lại và đồng bộ
+                self.log_msg("Thêm tài khoản thành công! Đang làm mới và đồng bộ...");
+                self.load_and_sync_accounts()
             except Exception as e:
-                self.log_msg(f"Lỗi khi thêm tài khoản vào hệ thống: {e}")
-                QMessageBox.critical(self, "Lỗi API", f"Không thể thêm tài khoản vào hệ thống:\n{e}")
+                self.log_msg(f"Lỗi khi thêm tài khoản vào hệ thống: {e}"); QMessageBox.critical(self, "Lỗi API",
+                                                                                                f"Không thể thêm tài khoản vào hệ thống:\n{e}")
+
     def on_info_account(self, row):
         account = self.online_accounts[row]
 
@@ -514,40 +491,32 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, "Thông tin tài khoản", info)
 
     def on_edit_account(self, row):
-        account = self.online_accounts[row]
+        account = self.online_accounts[row];
         dialog = AccountDialog(account_data=account, parent=self)
         if dialog.exec() == QDialog.Accepted:
-            updated_data = dialog.get_data()
+            updated_data = dialog.get_data();
             new_password = updated_data.get("game_password")
-
-            # Chỉ thực hiện xác thực và mã hóa nếu người dùng nhập mật khẩu mới
             if new_password:
-                self.log_msg(f"Đang xác thực mật khẩu mới cho {account['game_email']}...")
+                self.log_msg(f"Đang xác thực mật khẩu mới cho {account['game_email']}...");
                 QApplication.setOverrideCursor(Qt.WaitCursor)
-                success, message = check_game_login_client_side(account['game_email'], new_password)
+                success, message = check_game_login_client_side(account['game_email'], new_password);
                 QApplication.restoreOverrideCursor()
-                if not success:
-                    self.log_msg(f"Xác thực mật khẩu mới thất bại: {message}")
-                    QMessageBox.critical(self, "Mật khẩu không chính xác", message);
-                    return
-
-                # Mã hóa mật khẩu mới
+                if not success: self.log_msg(f"Xác thực mật khẩu mới thất bại: {message}"); QMessageBox.critical(self,
+                                                                                                                 "Mật khẩu không chính xác",
+                                                                                                                 message); return
                 user_login_email = self.cloud.load_token().email
-                if not user_login_email:
-                    QMessageBox.critical(self, "Lỗi", "Không tìm thấy email người dùng để tạo khóa mã hóa.");
-                    return
-
+                if not user_login_email: QMessageBox.critical(self, "Lỗi",
+                                                              "Không tìm thấy email người dùng để tạo khóa mã hóa."); return
                 encrypted_password = encrypt(new_password, user_login_email)
-                updated_data['game_password'] = encrypted_password  # Cập nhật lại data để gửi đi
-
+                updated_data['game_password'] = encrypted_password
             self.log_msg(f"Đang cập nhật tài khoản {account['game_email']}...")
             try:
                 self.cloud.update_game_account(account['id'], updated_data)
-                self.log_msg("Cập nhật thành công! Đang làm mới và đồng bộ...")
-                self.load_and_sync_accounts()  # Tải lại và đồng bộ
+                self.log_msg("Cập nhật thành công! Đang làm mới và đồng bộ...");
+                self.load_and_sync_accounts()
             except Exception as e:
-                self.log_msg(f"Lỗi khi cập nhật: {e}")
-                QMessageBox.critical(self, "Lỗi API", f"Không thể cập nhật tài khoản:\n{e}")
+                self.log_msg(f"Lỗi khi cập nhật: {e}"); QMessageBox.critical(self, "Lỗi API",
+                                                                             f"Không thể cập nhật tài khoản:\n{e}")
 
     def on_delete_account(self, row):
         account = self.online_accounts[row]
@@ -568,96 +537,121 @@ class MainWindow(QMainWindow):
             widget = self.tbl_acc.cellWidget(row, ACC_COL_CHECK)
             if widget and (chk_box := widget.findChild(QCheckBox)): chk_box.setChecked(checked)
 
-    def chucphuc_path_for_port(self, port: int) -> Path:
-        d = DATA_ROOT / str(port); d.mkdir(parents=True, exist_ok=True); return d / "chucphuc.txt"
-
-    def _read_bless_json(self, path: Path) -> dict:
+    def load_bless_online(self):
+        if self.active_port is None: return
         try:
-            if path.exists():
-                txt = path.read_text(encoding="utf-8").strip()
-                if txt:
-                    obj = json.loads(txt)
-                    if isinstance(obj, dict): obj.setdefault("cooldown_hours", 0); obj.setdefault("per_run",
-                                                                                                  0); obj.setdefault(
-                        "items", []); return obj
-        except Exception:
-            pass
-        return {"cooldown_hours": 0, "per_run": 0, "items": []}
+            self.log_msg("Đang tải cấu hình và DS Chúc phúc từ server...")
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            config = self.cloud.get_blessing_config()
+            self.ed_bless_cooldown.setText(str(config.get("cooldown_hours", 8)))
+            self.ed_bless_perrun.setText(str(config.get("per_run", 3)))
+            self.blessing_targets = self.cloud.get_blessing_targets()
+            self.tbl_bless.setRowCount(0)
+            for item in self.blessing_targets:
+                r = self.tbl_bless.rowCount();
+                self.tbl_bless.insertRow(r)
+                self.tbl_bless.setItem(r, BLESS_COL_NAME, QTableWidgetItem(item.get("target_name", "")))
+                last_run_str = item.get("last_blessed_run_at", "")
+                if last_run_str:
+                    try:
+                        dt = datetime.fromisoformat(last_run_str); last_run_str = dt.strftime('%d/%m/%Y %H:%M')
+                    except:
+                        pass
+                self.tbl_bless.setItem(r, BLESS_COL_LAST, QTableWidgetItem(last_run_str))
+            self.log_msg(f"Đã tải {len(self.blessing_targets)} mục tiêu Chúc phúc.")
+        except Exception as e:
+            self.log_msg(f"Lỗi tải DS Chúc phúc: {e}");
+            QMessageBox.critical(self, "Lỗi API", f"Không thể tải dữ liệu Chúc phúc:\n{e}")
+        finally:
+            QApplication.restoreOverrideCursor()
 
-    def _write_bless_json(self, path: Path, obj: dict):
-        path.parent.mkdir(parents=True, exist_ok=True); path.write_text(json.dumps(obj, ensure_ascii=False, indent=2),
-                                                                        encoding="utf-8")
-
-    def load_bless_for_port(self, port: int):
-        bpath = self.chucphuc_path_for_port(port);
-        obj = self._read_bless_json(bpath)
-        self.ed_bless_cooldown.setText(str(obj.get("cooldown_hours", 0)));
-        self.ed_bless_perrun.setText(str(obj.get("per_run", 0)))
-        items = obj.get("items") or [];
-        self.tbl_bless.setRowCount(0)
-        for idx, it in enumerate(items[:BLESS_MAX_ITEMS_RENDER]):
-            name = str(it.get("name", "")).strip();
-            last = str(it.get("last", "")).strip()
-            r = self.tbl_bless.rowCount();
-            self.tbl_bless.insertRow(r)
-            self.tbl_bless.setItem(r, BLESS_COL_NAME, QTableWidgetItem(name))
-            li = QTableWidgetItem(last);
-            li.setTextAlignment(Qt.AlignCenter);
-            self.tbl_bless.setItem(r, BLESS_COL_LAST, li)
-        self.log_msg(f"Loaded DS chúc phúc ({len(items)} items) từ {bpath}")
-
-    def save_bless_for_port(self, port: int):
-        bpath = self.chucphuc_path_for_port(port);
-        obj = self._read_bless_json(bpath)
+    def save_bless_config_online(self):
+        if self.active_port is None: return
         try:
-            cd = int(self.ed_bless_cooldown.text().strip() or "0")
-        except Exception:
-            cd = 0
-        try:
-            pr = int(self.ed_bless_perrun.text().strip() or "0")
-        except Exception:
-            pr = 0
-        obj["cooldown_hours"] = max(0, cd);
-        obj["per_run"] = max(0, pr);
-        items: List[dict] = []
-        for r in range(self.tbl_bless.rowCount()):
-            name_it = self.tbl_bless.item(r, BLESS_COL_NAME);
-            last_it = self.tbl_bless.item(r, BLESS_COL_LAST)
-            name = name_it.text().strip() if name_it else "";
-            last = last_it.text().strip() if last_it else ""
-            if not name: continue
-            old_map = {}
-            for old in (obj.get("items") or []):
-                if str(old.get("name", "")).strip() == name: old_map = old.get("blessed") or {}; break
-            items.append({"name": name, "last": last, "blessed": old_map})
-        obj["items"] = items;
-        self._write_bless_json(bpath, obj);
-        self.log_msg(f"Saved DS chúc phúc ({len(items)} items) → {bpath}")
+            cooldown = int(self.ed_bless_cooldown.text().strip() or 0)
+            per_run = int(self.ed_bless_perrun.text().strip() or 0)
+            data = {"cooldown_hours": cooldown, "per_run": per_run}
+            self.log_msg("Đang lưu cấu hình Chúc phúc lên server...")
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            self.cloud.update_blessing_config(data)
+            self.log_msg("Lưu cấu hình thành công!")
+            QMessageBox.information(self, "Thành công", "Đã lưu cấu hình Chúc phúc.")
+        except ValueError:
+            QMessageBox.warning(self, "Lỗi", "Giãn cách và Số lượt phải là số.")
+        except Exception as e:
+            self.log_msg(f"Lỗi lưu cấu hình Chúc phúc: {e}");
+            QMessageBox.critical(self, "Lỗi API", f"Không thể lưu cấu hình:\n{e}")
+        finally:
+            QApplication.restoreOverrideCursor()
+
+    def bless_add_online(self):
+        if self.active_port is None: return
+        text, ok = QInputDialog.getText(self, 'Thêm mục tiêu', 'Nhập tên nhân vật cần chúc phúc:')
+        if ok and (target_name := text.strip()):
+            self.log_msg(f"Đang thêm mục tiêu '{target_name}'...")
+            try:
+                QApplication.setOverrideCursor(Qt.WaitCursor)
+                self.cloud.add_blessing_target(target_name)
+                self.log_msg("Thêm thành công! Đang làm mới danh sách...");
+                self.load_bless_online()
+            except Exception as e:
+                self.log_msg(f"Lỗi thêm mục tiêu: {e}");
+                QMessageBox.critical(self, "Lỗi API", f"Không thể thêm mục tiêu:\n{e}")
+            finally:
+                QApplication.restoreOverrideCursor()
+
+    def bless_del_online(self):
+        if self.active_port is None: return
+        selected_rows = sorted({i.row() for i in self.tbl_bless.selectedIndexes()})
+        if not selected_rows: QMessageBox.information(self, "Thông báo",
+                                                      "Vui lòng chọn một hoặc nhiều mục tiêu để xóa."); return
+        targets_to_delete = [self.blessing_targets[r] for r in selected_rows]
+        names_to_delete = ", ".join([t.get('target_name', '') for t in targets_to_delete])
+        reply = QMessageBox.question(self, 'Xác nhận xóa', f"Bạn có chắc muốn xóa các mục tiêu:\n{names_to_delete}?",
+                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            self.log_msg(f"Đang xóa {len(targets_to_delete)} mục tiêu...")
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            try:
+                for target in targets_to_delete:
+                    if target_id := target.get('id'): self.cloud.delete_blessing_target(target_id)
+                self.log_msg("Xóa thành công! Đang làm mới danh sách...");
+                self.load_bless_online()
+            except Exception as e:
+                self.log_msg(f"Lỗi xóa mục tiêu: {e}");
+                QMessageBox.critical(self, "Lỗi API", f"Không thể xóa mục tiêu:\n{e}")
+            finally:
+                QApplication.restoreOverrideCursor()
 
     def load_bless_current_port(self):
-        if self.active_port is not None: self.load_bless_for_port(self.active_port)
+        self.load_bless_online()
 
     def save_bless_current_port(self):
-        if self.active_port is not None: self.save_bless_for_port(self.active_port)
+        self.save_bless_config_online()
 
     def bless_add(self):
-        if self.tbl_bless.rowCount() < BLESS_MAX_ITEMS_RENDER: self.tbl_bless.insertRow(self.tbl_bless.rowCount())
+        self.bless_add_online()
 
     def bless_del(self):
-        rows = sorted({i.row() for i in self.tbl_bless.selectedIndexes()}, reverse=True)
-        for r in rows: self.tbl_bless.removeRow(r)
+        self.bless_del_online()
 
     def log_msg(self, msg: str):
-        if self._is_closing or not hasattr(self, 'log') or self.log is None: print(f"(LOG-STDOUT) {msg}"); return
+        if self._is_closing or not hasattr(self, 'log') or self.log is None:
+            print(f"(LOG-STDOUT) {msg}")
+            return
         try:
-            self.log.append(msg); self.log.ensureCursorVisible()
+            # Di chuyển con trỏ lên đầu
+            self.log.moveCursor(QTextCursor.MoveOperation.Start)
+            # Chèn văn bản vào vị trí con trỏ (đầu văn bản)
+            self.log.insertPlainText(msg + "\n")
         except RuntimeError:
             print(f"(LOG-STDOUT-ERR) {msg}")
 
     def accounts_path_for_port(self, port: int) -> Path:
-        d = DATA_ROOT / str(port)
-        d.mkdir(parents=True, exist_ok=True)
+        d = DATA_ROOT / str(port);
+        d.mkdir(parents=True, exist_ok=True);
         return d / "accounts.txt"
+
 
 def main():
     app = QApplication(sys.argv)
