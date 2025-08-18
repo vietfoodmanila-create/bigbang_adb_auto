@@ -1,5 +1,5 @@
 # flows_login.py
-# Login theo ảnh + vùng cố định, đồng bộ với flows_logout.py & test_logout.py
+# Login theo ảnh + vùng cố định, đồng bộ với flows_logout.py
 from __future__ import annotations
 import time
 
@@ -89,16 +89,6 @@ def login_once(wk, email: str, password: str, server: str = "", date: str = "") 
         _log(wk, "⛔ Hủy trước khi login.")
         return False
     _log(wk, "Bắt đầu LOGIN…")
-
-    # Nếu app chưa foreground thì mở (nếu wk hỗ trợ start_app/wait_app_ready)
-    if hasattr(wk, "app_in_foreground") and not wk.app_in_foreground(GAME_PKG):
-        _log(wk, "App chưa foreground → mở game.")
-        if hasattr(wk, "start_app") and callable(wk.start_app):
-            wk.start_app(GAME_PKG, GAME_ACT)
-            if hasattr(wk, "wait_app_ready"):
-                wk.wait_app_ready(GAME_PKG, timeout_sec=30)
-        if not _sleep_coop(wk, 1.0):
-            return False
 
     # Nếu không ở need_login, thử back nhẹ vài lần để lộ form
     st = _state_simple(wk, package_hint=GAME_PKG)

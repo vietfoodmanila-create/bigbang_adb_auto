@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
 )
 from ui_auth import CloudClient
 from ui_license import AccountBanner
+from utils_crypto import encrypt
 
 # ====== Cấu hình ======
 ADB_PATH = Path(r"D:\Program Files\Nox\bin\adb.exe")
@@ -384,6 +385,31 @@ class MainWindow(QMainWindow):
             self.load_accounts_current_port();
             self.load_bless_for_port(port)
 
+    def load_and_sync_accounts(self):
+        """(CẬP NHẬT) Chỉ tải DS từ API và cập nhật bộ nhớ đệm, không ghi file."""
+        if self.active_port is None:
+            self.online_accounts = []
+            self.populate_accounts_table()
+            return
+
+        try:
+            self.log_msg("Đang tải và làm mới danh sách tài khoản từ server...")
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+
+            # Tải dữ liệu mới nhất từ API và lưu vào bộ nhớ đệm
+            self.online_accounts = self.cloud.get_game_accounts()
+            # Cập nhật lại giao diện bảng
+            self.populate_accounts_table()
+
+            self.log_msg(f"Đã làm mới {len(self.online_accounts)} tài khoản.")
+
+        except Exception as e:
+            self.online_accounts = []
+            self.populate_accounts_table()
+            self.log_msg(f"Lỗi tải và làm mới DS tài khoản: {e}")
+            QMessageBox.critical(self, "Lỗi API", f"Không thể tải danh sách tài khoản:\n{e}")
+        finally:
+            QApplication.restoreOverrideCursor()
     def load_accounts_current_port(self):
         if self.active_port is None: return
         try:
@@ -435,14 +461,14 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "Thiếu thông tin", "Vui lòng nhập đầy đủ email và mật khẩu.");
                 return
 
-            # (LOGIC MỚI) Kiểm tra xem email đã tồn tại trong danh sách hay chưa
+            # Kiểm tra xem email đã tồn tại trong danh sách hay chưa
             existing_emails = [acc.get('game_email', '').lower() for acc in self.online_accounts]
             if email.lower() in existing_emails:
                 QMessageBox.warning(self, "Tài khoản đã tồn tại", f"Tài khoản '{email}' đã có trong danh sách của bạn.")
                 self.log_msg(f"Thao tác thêm bị hủy: tài khoản {email} đã tồn tại.")
-                return  # Dừng lại ngay tại đây
+                return
 
-            # Nếu không tồn tại, tiếp tục quy trình xác thực và thêm mới
+            # Bước 1: Xác thực mật khẩu plaintext với Selenium
             self.log_msg(f"Đang mở trình duyệt để xác thực tài khoản {email}...")
             QApplication.setOverrideCursor(Qt.WaitCursor)
             success, message = check_game_login_client_side(email, password)
@@ -453,15 +479,29 @@ class MainWindow(QMainWindow):
                 QMessageBox.critical(self, "Xác thực thất bại", message);
                 return
 
-            self.log_msg(f"Xác thực thành công! Đang thêm tài khoản vào hệ thống...")
+            # Bước 2: Mã hóa mật khẩu trước khi gửi đi
+            self.log_msg("Xác thực thành công! Đang mã hóa và gửi dữ liệu lên server...")
             try:
-                self.cloud.add_game_account(new_data)
-                self.log_msg("Thêm thành công! Đang làm mới danh sách...");
-                self.load_accounts_current_port()
-            except Exception as e:
-                self.log_msg(f"Lỗi khi thêm tài khoản: {e}");
-                QMessageBox.critical(self, "Lỗi API", f"Không thể thêm tài khoản vào hệ thống:\n{e}")
+                user_login_email = self.cloud.load_token().email
+                if not user_login_email:
+                    QMessageBox.critical(self, "Lỗi", "Không tìm thấy email người dùng để tạo khóa mã hóa.");
+                    return
 
+                encrypted_password = encrypt(password, user_login_email)
+
+                data_to_send = {
+                    "game_email": email,
+                    "game_password": encrypted_password,  # Gửi pass đã mã hóa
+                    "server": new_data.get("server")
+                }
+
+                # Bước 3: Gửi dữ liệu đã mã hóa lên server
+                self.cloud.add_game_account(data_to_send)
+                self.log_msg("Thêm tài khoản thành công! Đang làm mới và đồng bộ...")
+                self.load_and_sync_accounts()  # Tải lại và đồng bộ
+            except Exception as e:
+                self.log_msg(f"Lỗi khi thêm tài khoản vào hệ thống: {e}")
+                QMessageBox.critical(self, "Lỗi API", f"Không thể thêm tài khoản vào hệ thống:\n{e}")
     def on_info_account(self, row):
         account = self.online_accounts[row]
 
@@ -474,27 +514,40 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, "Thông tin tài khoản", info)
 
     def on_edit_account(self, row):
-        account = self.online_accounts[row];
+        account = self.online_accounts[row]
         dialog = AccountDialog(account_data=account, parent=self)
         if dialog.exec() == QDialog.Accepted:
-            updated_data = dialog.get_data();
+            updated_data = dialog.get_data()
             new_password = updated_data.get("game_password")
+
+            # Chỉ thực hiện xác thực và mã hóa nếu người dùng nhập mật khẩu mới
             if new_password:
-                self.log_msg(f"Đang mở trình duyệt để xác thực mật khẩu mới cho {account['game_email']}...");
+                self.log_msg(f"Đang xác thực mật khẩu mới cho {account['game_email']}...")
                 QApplication.setOverrideCursor(Qt.WaitCursor)
-                success, message = check_game_login_client_side(account['game_email'], new_password);
+                success, message = check_game_login_client_side(account['game_email'], new_password)
                 QApplication.restoreOverrideCursor()
-                if not success: self.log_msg(f"Xác thực mật khẩu mới thất bại: {message}"); QMessageBox.critical(self,
-                                                                                                                 "Mật khẩu không chính xác",
-                                                                                                                 message); return
+                if not success:
+                    self.log_msg(f"Xác thực mật khẩu mới thất bại: {message}")
+                    QMessageBox.critical(self, "Mật khẩu không chính xác", message);
+                    return
+
+                # Mã hóa mật khẩu mới
+                user_login_email = self.cloud.load_token().email
+                if not user_login_email:
+                    QMessageBox.critical(self, "Lỗi", "Không tìm thấy email người dùng để tạo khóa mã hóa.");
+                    return
+
+                encrypted_password = encrypt(new_password, user_login_email)
+                updated_data['game_password'] = encrypted_password  # Cập nhật lại data để gửi đi
+
             self.log_msg(f"Đang cập nhật tài khoản {account['game_email']}...")
             try:
                 self.cloud.update_game_account(account['id'], updated_data)
-                self.log_msg("Cập nhật thành công! Đang làm mới danh sách...");
-                self.load_accounts_current_port()
+                self.log_msg("Cập nhật thành công! Đang làm mới và đồng bộ...")
+                self.load_and_sync_accounts()  # Tải lại và đồng bộ
             except Exception as e:
-                self.log_msg(f"Lỗi khi cập nhật: {e}"); QMessageBox.critical(self, "Lỗi API",
-                                                                             f"Không thể cập nhật tài khoản:\n{e}")
+                self.log_msg(f"Lỗi khi cập nhật: {e}")
+                QMessageBox.critical(self, "Lỗi API", f"Không thể cập nhật tài khoản:\n{e}")
 
     def on_delete_account(self, row):
         account = self.online_accounts[row]
@@ -601,6 +654,10 @@ class MainWindow(QMainWindow):
         except RuntimeError:
             print(f"(LOG-STDOUT-ERR) {msg}")
 
+    def accounts_path_for_port(self, port: int) -> Path:
+        d = DATA_ROOT / str(port)
+        d.mkdir(parents=True, exist_ok=True)
+        return d / "accounts.txt"
 
 def main():
     app = QApplication(sys.argv)
