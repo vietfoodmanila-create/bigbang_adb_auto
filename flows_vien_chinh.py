@@ -1,12 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 flows_vien_chinh.py — phiên bản chuẩn hoá
-Viễn chinh trong Liên minh:
-- Đảm bảo không còn popup: ESC cho tới khi MẤT 'lien-minh-inside' → tìm 'outside' → nhấn → quay lại 'inside'
-- Mở 'Liên minh – Viễn chinh' bằng ảnh + vuốt phải/trái theo chu kỳ cho tới khi THẤY 'Trinh sát'.
-- NHẤN TRINH SÁT 12 LẦN: mỗi lần đều kiểm tra thấy nút rồi mới bấm; sau khi bấm, nếu thấy 'nut-den'/'nut-dong' thì bấm đóng; nếu không thấy thì bỏ qua.
-- Nếu mất nút 'Trinh sát' trong quá trình lặp → ESC & mở lại UI Viễn chinh cho tới khi thấy rồi mới tiếp tục.
-- Kết thúc: ESC → chờ hiện OUTSIDE → DONE.
+Viễn chinh trong Liên minh
 """
 
 from __future__ import annotations
@@ -22,34 +17,36 @@ from module import (
     sleep_coop as _sleep_coop,
     aborted as _aborted,
     grab_screen_np as _grab_screen_np,
-    find_on_frame as _find_on_frame,
+    # (SỬA LỖI) Thêm find_on_frame vào danh sách import
+    find_on_frame,
     DEFAULT_THR as THR_DEFAULT,
     free_img as _free_img,
     mem_relief as _mem_relief,
 )
 
 # ===== REGIONS =====
-REG_INSIDE      = (28, 3, 201, 75)             # lien-minh-inside
-REG_OUTSIDE     = (581, 1485, 758, 1600)       # lien-minh-outside
+REG_INSIDE = (28, 3, 201, 75)  # lien-minh-inside
+REG_OUTSIDE = (581, 1485, 758, 1600)  # lien-minh-outside
 
-REG_FIND        = (33, 516, 628, 615)          # lien-minh-vien-chinh
-REG_TRINH_SAT   = (715, 1288, 888, 1480)       # nut-trinh-sat
+REG_FIND = (33, 516, 628, 615)  # lien-minh-vien-chinh
+REG_TRINH_SAT = (715, 1288, 888, 1480)  # nut-trinh-sat
 
-REG_DEN         = (308, 1290, 586, 1386)       # nut-den
-REG_DONG        = (771, 130, 881, 231)         # nut-dong
+REG_DEN = (308, 1290, 586, 1386)  # nut-den
+REG_DONG = (771, 130, 881, 231)  # nut-dong
 
 # ===== IMAGES =====
-IMG_INSIDE      = "images/lien_minh/lien-minh-inside.png"
-IMG_OUTSIDE     = "images/lien_minh/lien-minh-outside.png"
+IMG_INSIDE = "images/lien_minh/lien-minh-inside.png"
+IMG_OUTSIDE = "images/lien_minh/lien-minh-outside.png"
 
-IMG_VIEN_CHINH  = "images/lien_minh/lien-minh-vien-chinh.png"
-IMG_TRINH_SAT   = "images/lien_minh/nut-trinh-sat.png"
-IMG_DEN         = "images/lien_minh/nut-den.png"
-IMG_DONG        = "images/lien_minh/nut-dong.png"
+IMG_VIEN_CHINH = "images/lien_minh/lien-minh-vien-chinh.png"
+IMG_TRINH_SAT = "images/lien_minh/nut-trinh-sat.png"
+IMG_DEN = "images/lien_minh/nut-den.png"
+IMG_DONG = "images/lien_minh/nut-dong.png"
 
 # ===== PARAMS =====
-ESC_DELAY   = 1.0
+ESC_DELAY = 1.0
 CLICK_DELAY = 0.4
+
 
 # ================= core =================
 
@@ -63,7 +60,7 @@ def _ensure_inside_hard(wk) -> bool:
     while True:
         if _aborted(wk): return False
         img = _grab_screen_np(wk)
-        ok_in, _, _ = _find_on_frame(img, IMG_INSIDE, region=REG_INSIDE, threshold=THR_DEFAULT)
+        ok_in, _, _ = find_on_frame(img, IMG_INSIDE, region=REG_INSIDE, threshold=THR_DEFAULT)
         _free_img(img)
         if not ok_in:
             break
@@ -75,12 +72,12 @@ def _ensure_inside_hard(wk) -> bool:
         if _aborted(wk): return False
         img = _grab_screen_np(wk)
 
-        ok_in, _, _ = _find_on_frame(img, IMG_INSIDE, region=REG_INSIDE, threshold=THR_DEFAULT)
+        ok_in, _, _ = find_on_frame(img, IMG_INSIDE, region=REG_INSIDE, threshold=THR_DEFAULT)
         if ok_in:
             _free_img(img)
             return True
 
-        ok_out, _, _ = _find_on_frame(img, IMG_OUTSIDE, region=REG_OUTSIDE, threshold=THR_DEFAULT)
+        ok_out, _, _ = find_on_frame(img, IMG_OUTSIDE, region=REG_OUTSIDE, threshold=THR_DEFAULT)
         _free_img(img)
         if ok_out:
             _tap_center(wk, REG_OUTSIDE)
@@ -89,7 +86,7 @@ def _ensure_inside_hard(wk) -> bool:
             for _ in range(10):
                 if _aborted(wk): return False
                 img2 = _grab_screen_np(wk)
-                ok_in2, _, _ = _find_on_frame(img2, IMG_INSIDE, region=REG_INSIDE, threshold=THR_DEFAULT)
+                ok_in2, _, _ = find_on_frame(img2, IMG_INSIDE, region=REG_INSIDE, threshold=THR_DEFAULT)
                 _free_img(img2)
                 if ok_in2:
                     return True
@@ -99,6 +96,7 @@ def _ensure_inside_hard(wk) -> bool:
         # không thấy cả 2 → ESC 1 cái rồi tìm tiếp outside
         _adb_safe(wk, "shell", "input", "keyevent", "4", timeout=2)
         if not _sleep_coop(wk, ESC_DELAY): return False
+
 
 def _open_expedition(wk) -> bool:
     """
@@ -114,7 +112,7 @@ def _open_expedition(wk) -> bool:
 
         # 0) thử tìm ngay khi chưa vuốt
         img0 = _grab_screen_np(wk)
-        ok0, pt0, _ = _find_on_frame(img0, IMG_VIEN_CHINH, region=REG_FIND, threshold=THR_DEFAULT)
+        ok0, pt0, _ = find_on_frame(img0, IMG_VIEN_CHINH, region=REG_FIND, threshold=THR_DEFAULT)
         _free_img(img0)
         if ok0 and pt0:
             _tap(wk, *pt0)
@@ -123,7 +121,7 @@ def _open_expedition(wk) -> bool:
             for _ in range(20):
                 if _aborted(wk): return False
                 imgts = _grab_screen_np(wk)
-                okt, _, _ = _find_on_frame(imgts, IMG_TRINH_SAT, region=REG_TRINH_SAT, threshold=THR_DEFAULT)
+                okt, _, _ = find_on_frame(imgts, IMG_TRINH_SAT, region=REG_TRINH_SAT, threshold=THR_DEFAULT)
                 _free_img(imgts)
                 if okt: return True
                 if not _sleep_coop(wk, 0.2): return False
@@ -133,7 +131,7 @@ def _open_expedition(wk) -> bool:
             for _ in range(20):
                 if _aborted(wk): return False
                 imgts = _grab_screen_np(wk)
-                okt, _, _ = _find_on_frame(imgts, IMG_TRINH_SAT, region=REG_TRINH_SAT, threshold=THR_DEFAULT)
+                okt, _, _ = find_on_frame(imgts, IMG_TRINH_SAT, region=REG_TRINH_SAT, threshold=THR_DEFAULT)
                 _free_img(imgts)
                 if okt: return True
                 if not _sleep_coop(wk, 0.2): return False
@@ -148,7 +146,7 @@ def _open_expedition(wk) -> bool:
 
             # check trước swipe
             img1 = _grab_screen_np(wk)
-            ok1, pt1, _ = _find_on_frame(img1, IMG_VIEN_CHINH, region=REG_FIND, threshold=THR_DEFAULT)
+            ok1, pt1, _ = find_on_frame(img1, IMG_VIEN_CHINH, region=REG_FIND, threshold=THR_DEFAULT)
             _free_img(img1)
             if ok1 and pt1:
                 _tap(wk, *pt1)
@@ -162,7 +160,7 @@ def _open_expedition(wk) -> bool:
 
             # check ngay sau swipe
             img2 = _grab_screen_np(wk)
-            ok2, pt2, _ = _find_on_frame(img2, IMG_VIEN_CHINH, region=REG_FIND, threshold=THR_DEFAULT)
+            ok2, pt2, _ = find_on_frame(img2, IMG_VIEN_CHINH, region=REG_FIND, threshold=THR_DEFAULT)
             _free_img(img2)
             if ok2 and pt2:
                 _tap(wk, *pt2)
@@ -179,7 +177,7 @@ def _open_expedition(wk) -> bool:
 
             # check trước swipe
             img3 = _grab_screen_np(wk)
-            ok3, pt3, _ = _find_on_frame(img3, IMG_VIEN_CHINH, region=REG_FIND, threshold=THR_DEFAULT)
+            ok3, pt3, _ = find_on_frame(img3, IMG_VIEN_CHINH, region=REG_FIND, threshold=THR_DEFAULT)
             _free_img(img3)
             if ok3 and pt3:
                 _tap(wk, *pt3)
@@ -193,7 +191,7 @@ def _open_expedition(wk) -> bool:
 
             # check ngay sau swipe
             img4 = _grab_screen_np(wk)
-            ok4, pt4, _ = _find_on_frame(img4, IMG_VIEN_CHINH, region=REG_FIND, threshold=THR_DEFAULT)
+            ok4, pt4, _ = find_on_frame(img4, IMG_VIEN_CHINH, region=REG_FIND, threshold=THR_DEFAULT)
             _free_img(img4)
             if ok4 and pt4:
                 _tap(wk, *pt4)
@@ -220,25 +218,25 @@ def _reopen_until_trinh_sat(wk, max_rounds=6) -> bool:
             _mem_relief()
     return False
 
+
 def _do_trinh_sat_12_times(wk):
     """
     Đảm bảo đủ 12 lần hợp lệ:
       - Mỗi lần đều kiểm tra THẤY 'Trinh sát' rồi mới bấm.
       - Nếu mất nút → ESC & mở lại tới khi thấy lại 'Trinh sát' rồi mới tiếp tục.
-      - Sau khi bấm: nếu thấy 'nut-den' hoặc 'nut-dong' thì bấm; không thấy thì bỏ qua (không bấm mò).
+      - Sau khi bấm: nếu thấy 'nut-den' hoặc 'nut-dong' thì bấm; không thấy thì bỏ qua.
     """
     done = 0
     while done < 12 and not _aborted(wk):
         # 1) xác nhận có 'Trinh sát'
         img = _grab_screen_np(wk)
-        ok_ts, pt_ts, _ = _find_on_frame(img, IMG_TRINH_SAT, region=REG_TRINH_SAT, threshold=THR_DEFAULT)
+        ok_ts, pt_ts, _ = find_on_frame(img, IMG_TRINH_SAT, region=REG_TRINH_SAT, threshold=THR_DEFAULT)
         _free_img(img)
         if not ok_ts or not pt_ts:
             _log(wk, "Không thấy 'Trinh sát' — mở lại Viễn chinh rồi tiếp tục.")
             if not _reopen_until_trinh_sat(wk, max_rounds=6):
                 _log(wk, "❌ Không thể mở lại 'Trinh sát' sau nhiều lần thử.")
                 return
-            # đã mở lại thành công → quay vòng để bấm
             continue
 
         # 2) bấm 'Trinh sát'
@@ -247,7 +245,7 @@ def _do_trinh_sat_12_times(wk):
 
         # 3) nếu có 'nut-den' → bấm
         img2 = _grab_screen_np(wk)
-        ok_den, p_den, _ = _find_on_frame(img2, IMG_DEN, region=REG_DEN, threshold=THR_DEFAULT)
+        ok_den, p_den, _ = find_on_frame(img2, IMG_DEN, region=REG_DEN, threshold=THR_DEFAULT)
         _free_img(img2)
         if ok_den and p_den:
             _tap(wk, *p_den)
@@ -255,7 +253,7 @@ def _do_trinh_sat_12_times(wk):
 
         # 4) nếu có 'nut-dong' → bấm
         img3 = _grab_screen_np(wk)
-        ok_dong, p_dong, _ = _find_on_frame(img3, IMG_DONG, region=REG_DONG, threshold=THR_DEFAULT)
+        ok_dong, p_dong, _ = find_on_frame(img3, IMG_DONG, region=REG_DONG, threshold=THR_DEFAULT)
         _free_img(img3)
         if ok_dong and p_dong:
             _tap(wk, *p_dong)
@@ -263,9 +261,11 @@ def _do_trinh_sat_12_times(wk):
 
         done += 1
         _log(wk, f"Trinh sát thành công lần {done}/12")
-        if (done % 3) == 0:
-            _mem_relief()
+
+        _mem_relief()
+
         if not _sleep_coop(wk, 0.25): return
+
 
 def run_guild_expedition_flow(wk, log=print) -> bool:
     """
@@ -305,7 +305,7 @@ def run_guild_expedition_flow(wk, log=print) -> bool:
             _mem_relief()
             return False
         img = _grab_screen_np(wk)
-        ok_out, _, _ = _find_on_frame(img, IMG_OUTSIDE, region=REG_OUTSIDE, threshold=THR_DEFAULT)
+        ok_out, _, _ = find_on_frame(img, IMG_OUTSIDE, region=REG_OUTSIDE, threshold=THR_DEFAULT)
         _free_img(img)
         if ok_out:
             _log(wk, "✅ Hoàn tất Viễn chinh (đã về màn có Liên minh outside).")

@@ -322,47 +322,39 @@ def grab_screen_np(wk=None) -> Optional[np.ndarray]:
             log(f"imdecode lỗi: {e}")
         return None
 
+
 def find_on_frame(
-    frame_bgr_or_gray,
-    template_path: str,
-    *,
-    region: tuple[int,int,int,int] | None = None,
-    threshold: float = 0.85,
-    grayscale: bool = True,
-    allow_downscale: bool = False,
-    max_dim: int = 1280,
+        frame_bgr_or_gray,
+        template_path: str,
+        *,
+        region: tuple[int, int, int, int] | None = None,
+        threshold: float = 0.85,
+        grayscale: bool = True,
+        allow_downscale: bool = False,
+        max_dim: int = 1280,
 ):
     """
     Khớp template trên 1 frame (hoặc ROI).
-    Trả: (ok: bool, point: (x,y) | None, score: float)
-
-    Gia cố an toàn:
-    - frame None / template không đọc được / ROI rỗng → trả (False, None, 0.0)
-    - Clamp ROI vào biên ảnh
-    - (tuỳ chọn) downscale ROI + template để giảm RAM, rồi scale ngược toạ độ.
+    Trả: (ok: bool, point: (x,y) | None, score: float) - Point là TÂM của vùng khớp.
     """
     import cv2
     import numpy as np
 
-    # Guard: frame None
     if frame_bgr_or_gray is None:
         return False, None, 0.0
 
-    # Đọc template
     tpl = cv2.imread(template_path, cv2.IMREAD_GRAYSCALE if grayscale else cv2.IMREAD_COLOR)
     if tpl is None or tpl.size == 0:
         return False, None, 0.0
 
     img = frame_bgr_or_gray
 
-    # Chuẩn hoá không gian màu
     if grayscale and img.ndim == 3:
         try:
             img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         except Exception:
             return False, None, 0.0
 
-    # Cắt ROI (có clamp biên)
     offx = offy = 0
     if region is not None:
         try:
@@ -370,9 +362,9 @@ def find_on_frame(
         except Exception:
             return False, None, 0.0
         h, w = img.shape[:2]
-        x1 = max(0, min(int(x1), w))
+        x1 = max(0, min(int(x1), w));
         x2 = max(0, min(int(x2), w))
-        y1 = max(0, min(int(y1), h))
+        y1 = max(0, min(int(y1), h));
         y2 = max(0, min(int(y2), h))
         if x2 <= x1 or y2 <= y1:
             return False, None, 0.0
@@ -382,12 +374,11 @@ def find_on_frame(
         img = roi.copy()
         offx, offy = x1, y1
 
-    # (tuỳ chọn) Downscale ROI + template
     scale = 1.0
     ih, iw = img.shape[:2]
     if allow_downscale and max(ih, iw) > max_dim:
         scale = max_dim / float(max(ih, iw))
-        new_w = max(1, int(iw * scale))
+        new_w = max(1, int(iw * scale));
         new_h = max(1, int(ih * scale))
         img_use = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
         th, tw = tpl.shape[:2]
@@ -396,7 +387,6 @@ def find_on_frame(
         img_use = img
         tpl_use = tpl
 
-    # Kiểm tra kích thước hợp lệ trước khi match
     ih, iw = img_use.shape[:2]
     th, tw = tpl_use.shape[:2]
     if th <= 0 or tw <= 0 or ih < th or iw < tw:
@@ -405,7 +395,6 @@ def find_on_frame(
     try:
         res = cv2.matchTemplate(img_use, tpl_use, cv2.TM_CCOEFF_NORMED)
     except Exception:
-        # Phòng khi OpenCV còn ném lỗi do RAM/kích thước
         return False, None, 0.0
 
     min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
@@ -413,10 +402,19 @@ def find_on_frame(
     if score < float(threshold):
         return False, None, score
 
-    # Toạ độ trên frame gốc
-    px = int(max_loc[0] / scale) + offx
-    py = int(max_loc[1] / scale) + offy
-    return True, (px, py), score
+    # (SỬA LỖI) Tính toán tọa độ TÂM thay vì góc trên trái
+    # Lấy kích thước của template đã được scale (tpl_use)
+    th_scaled, tw_scaled = tpl_use.shape[:2]
+
+    # Tọa độ tâm trên ảnh đã scale
+    center_x_scaled = max_loc[0] + tw_scaled // 2
+    center_y_scaled = max_loc[1] + th_scaled // 2
+
+    # Chuyển đổi về tọa độ gốc và cộng với offset của vùng region
+    center_x_original = int(center_x_scaled / scale) + offx
+    center_y_original = int(center_y_scaled / scale) + offy
+
+    return True, (center_x_original, center_y_original), score
 # ==== CLOUD API (chuẩn dùng chung cho toàn app) ====
 import os, json, platform, hashlib, uuid, requests
 from pathlib import Path

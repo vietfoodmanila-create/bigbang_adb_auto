@@ -238,6 +238,48 @@ class CloudClient:
         r = self.session.delete(url, headers=self._auth_headers(), timeout=REQUEST_TIMEOUT)
         self._raise_for_json_error(r)
         return r.json()
+#hàm lấy api chúc phúc
+    def get_blessing_config(self) -> dict:
+        """Lấy cấu hình Chúc phúc của người dùng."""
+        r = self.session.get(self._url("/api/blessing/config"), headers=self._auth_headers(), timeout=REQUEST_TIMEOUT)
+        self._raise_for_json_error(r)
+        return r.json().get("config", {})
+
+    def update_blessing_config(self, data: dict) -> dict:
+        """Cập nhật cấu hình Chúc phúc."""
+        r = self.session.put(self._url("/api/blessing/config"), json=data, headers=self._auth_headers(),
+                             timeout=REQUEST_TIMEOUT)
+        self._raise_for_json_error(r)
+        return r.json()
+
+    def get_blessing_targets(self) -> list:
+        """Lấy danh sách các mục tiêu Chúc phúc."""
+        r = self.session.get(self._url("/api/blessing/targets"), headers=self._auth_headers(), timeout=REQUEST_TIMEOUT)
+        self._raise_for_json_error(r)
+        return r.json().get("targets", [])
+
+    def add_blessing_target(self, target_name: str) -> dict:
+        """Thêm một mục tiêu Chúc phúc mới."""
+        payload = {"target_name": target_name}
+        r = self.session.post(self._url("/api/blessing/targets"), json=payload, headers=self._auth_headers(),
+                              timeout=REQUEST_TIMEOUT)
+        self._raise_for_json_error(r)
+        return r.json()
+
+    def delete_blessing_target(self, target_id: int) -> dict:
+        """Xóa một mục tiêu Chúc phúc."""
+        url = self._url(f"/api/blessing/targets/{target_id}")
+        r = self.session.delete(url, headers=self._auth_headers(), timeout=REQUEST_TIMEOUT)
+        self._raise_for_json_error(r)
+        return r.json()
+
+    def record_blessing(self, target_id: int, game_account_id: int) -> dict:
+        """Ghi lại một hành động Chúc phúc vào lịch sử."""
+        payload = {"target_id": target_id, "game_account_id": game_account_id}
+        r = self.session.post(self._url("/api/blessing/history"), json=payload, headers=self._auth_headers(),
+                              timeout=REQUEST_TIMEOUT)
+        self._raise_for_json_error(r)
+        return r.json()
     # --- utils ---
     @staticmethod
     def _raise_for_json_error(r: requests.Response):
