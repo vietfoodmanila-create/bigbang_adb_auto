@@ -2,7 +2,8 @@
 # Login theo ảnh + vùng cố định, đồng bộ với flows_logout.py
 from __future__ import annotations
 import time
-
+import cv2
+import numpy as np
 # ====== import toàn bộ helper dùng chung từ module.py ======
 from module import (
     log_wk as _log,
@@ -49,7 +50,36 @@ IMG_THONG_BAO           = "images/login/thong-bao.png"
 GAME_PKG = "com.phsgdbz.vn"
 GAME_ACT = "com.phsgdbz.vn/org.cocos2dx.javascript.GameTwActivity"
 
+GRAY_SATURATION_MAX = 25
 
+
+def _is_pixel_gray(wk, x: int, y: int) -> bool:
+    """
+    Chụp màn hình, lấy màu tại tọa độ (x, y) và kiểm tra xem nó có phải màu xám không
+    bằng cách đo độ bão hòa (Saturation) trong không gian màu HSV.
+    """
+    img = _grab_screen_np(wk)
+    if img is None:
+        return False  # Mặc định không phải xám nếu không chụp được ảnh
+    try:
+        # Lấy một vùng nhỏ 3x3 quanh điểm để lấy màu trung bình, tránh nhiễu
+        y1, x1 = max(0, y - 1), max(0, x - 1)
+        y2, x2 = min(img.shape[0], y + 2), min(img.shape[1], x + 2)
+        roi = img[y1:y2, x1:x2]
+
+        # Chuyển sang HSV và lấy giá trị Saturation trung bình
+        hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+        avg_saturation = np.mean(hsv_roi[:, :, 1])
+
+        _log(wk, f"Kiểm tra bảo trì tại ({x},{y}): Độ bão hòa màu = {avg_saturation:.1f}")
+
+        return avg_saturation < GRAY_SATURATION_MAX
+    except Exception as e:
+        _log(wk, f"Lỗi khi kiểm tra màu pixel: {e}")
+        return False
+    finally:
+        if 'img' in locals():
+            del img
 def _sleep(s: float):
     time.sleep(s)
 
@@ -175,6 +205,11 @@ def login_once(wk, email: str, password: str, server: str = "", date: str = "") 
 
         if ok_da and ok_game:
             if pt_game:
+                if _is_pixel_gray(wk, 263, 1115):
+                    _log(wk, "⚠️ Phát hiện trò chơi đang bảo trì (nút 'Vào Game' màu xám).")
+                    # Trả về False để báo hiệu login thất bại, luồng auto sẽ tự xử lý
+                    del img
+                    return False
                 _tap(wk, *pt_game)
                 pressed_once = True
                 del img
