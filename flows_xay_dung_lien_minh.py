@@ -23,7 +23,7 @@ from module import (
     mem_relief as _mem_relief,
     DEFAULT_THR as THR_DEFAULT,
     ensure_inside_generic as _ensure_inside_generic,
-    open_by_swiping as _open_by_swiping,
+    open_by_swiping as _open_by_swiping,resource_path,
 )
 
 # ========= REGIONS =========
@@ -40,17 +40,17 @@ REG_TUONG_THANH_ICON    = (8, 305, 630, 455)         # xay-dung-tuong-thanh.png
 REG_NUT_BAM_XAY_DUNG    = (481, 1290, 835, 1468)     # nut-bam-xay-dung.png
 
 # ========= IMAGES =========
-IMG_INSIDE              = "images/lien_minh/lien-minh-inside.png"
-IMG_OUTSIDE             = "images/lien_minh/lien-minh-outside.png"
+IMG_INSIDE              = resource_path("images/lien_minh/lien-minh-inside.png")
+IMG_OUTSIDE             = resource_path("images/lien_minh/lien-minh-outside.png")
 
-IMG_BUILD_ICON          = "images/lien_minh/xay-dung-lien-minh.png"
-IMG_BUILD_INSIDE        = "images/lien_minh/xay-dung-inside.png"
+IMG_BUILD_ICON          = resource_path("images/lien_minh/xay-dung-lien-minh.png")
+IMG_BUILD_INSIDE        = resource_path("images/lien_minh/xay-dung-inside.png")
 
-IMG_XEM_QC              = "images/lien_minh/xem-quang-cao.png"
-IMG_XEM_VIDEO           = "images/lien_minh/xem-video.png"
+IMG_XEM_QC              = resource_path("images/lien_minh/xem-quang-cao.png")
+IMG_XEM_VIDEO           = resource_path("images/lien_minh/xem-video.png")
 
-IMG_TUONG_THANH_ICON    = "images/lien_minh/xay-dung-tuong-thanh.png"
-IMG_NUT_BAM_XAY_DUNG    = "images/lien_minh/nut-bam-xay-dung.png"
+IMG_TUONG_THANH_ICON    = resource_path("images/lien_minh/xay-dung-tuong-thanh.png")
+IMG_NUT_BAM_XAY_DUNG    = resource_path("images/lien_minh/nut-bam-xay-dung.png")
 
 # ========= PARAMS =========
 THR_DEFAULT = 0.86

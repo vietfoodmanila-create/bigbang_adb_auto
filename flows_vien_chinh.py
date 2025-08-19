@@ -21,7 +21,7 @@ from module import (
     find_on_frame,
     DEFAULT_THR as THR_DEFAULT,
     free_img as _free_img,
-    mem_relief as _mem_relief,
+    mem_relief as _mem_relief,resource_path
 )
 
 # ===== REGIONS =====
@@ -35,13 +35,13 @@ REG_DEN = (308, 1290, 586, 1386)  # nut-den
 REG_DONG = (771, 130, 881, 231)  # nut-dong
 
 # ===== IMAGES =====
-IMG_INSIDE = "images/lien_minh/lien-minh-inside.png"
-IMG_OUTSIDE = "images/lien_minh/lien-minh-outside.png"
+IMG_INSIDE = resource_path("images/lien_minh/lien-minh-inside.png")
+IMG_OUTSIDE = resource_path("images/lien_minh/lien-minh-outside.png")
 
-IMG_VIEN_CHINH = "images/lien_minh/lien-minh-vien-chinh.png"
-IMG_TRINH_SAT = "images/lien_minh/nut-trinh-sat.png"
-IMG_DEN = "images/lien_minh/nut-den.png"
-IMG_DONG = "images/lien_minh/nut-dong.png"
+IMG_VIEN_CHINH = resource_path("images/lien_minh/lien-minh-vien-chinh.png")
+IMG_TRINH_SAT = resource_path("images/lien_minh/nut-trinh-sat.png")
+IMG_DEN = resource_path("images/lien_minh/nut-den.png")
+IMG_DONG = resource_path("images/lien_minh/nut-dong.png")
 
 # ===== PARAMS =====
 ESC_DELAY = 1.0

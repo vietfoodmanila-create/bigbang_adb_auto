@@ -15,15 +15,15 @@ import re
 from module import (
     grab_screen_np, find_on_frame, tap, tap_center, swipe,
     sleep_coop, free_img, adb_safe, ocr_region,
-    log_wk as _log,
+    log_wk as _log,resource_path,
 )
 
 # ---------------- Template paths (đặt trong images/chuc_phuc) ----------------
-IMG_MENU = "images/chuc_phuc/nut-menu.png"
-IMG_GUILD_OUT = "images/chuc_phuc/lien-minh-outside.png"
-IMG_RANK = "images/chuc_phuc/bang-xep-hang.png"
-IMG_BTN_RANK = "images/chuc_phuc/nut-xep-hang.png"
-IMG_BTN_SERVER = "images/chuc_phuc/lien-server.png"
+IMG_MENU = resource_path("images/chuc_phuc/nut-menu.png")
+IMG_GUILD_OUT = resource_path("images/chuc_phuc/lien-minh-outside.png")
+IMG_RANK = resource_path("images/chuc_phuc/bang-xep-hang.png")
+IMG_BTN_RANK = resource_path("images/chuc_phuc/nut-xep-hang.png")
+IMG_BTN_SERVER = resource_path("images/chuc_phuc/lien-server.png")
 
 # ---------------- Vùng tìm kiếm (x1,y1,x2,y2) ----------------
 REG_MENU = (0, 580, 81, 688)
@@ -36,13 +36,13 @@ REG_BTN_SERVER = (478, 1431, 696, 1538)
 # (region, (tap1_x,tap1_y), (tap2_x,tap2_y))
 # 7 vùng OCR đã cập nhật
 OCR_SLOTS: List[Tuple[Tuple[int,int,int,int], Tuple[int,int], Tuple[int,int]]] = [
-    ((330,186,500,276),   (265,268),  (758,811)),
-    ((330,343,500,431),   (268,430),  (756,970)),
-    ((330,493,500,583),   (273,586),  (755,1116)),
-    ((330,646,500,731),   (265,745),  (758,635)),
-    ((330,795,500,890),   (263,876),  (760,783)),
-    ((330,945,500,1023),  (263,1031), (756,936)),
-    ((330,1098,500,1180), (270,1186), (760,1090)),
+    ((330,203,540,260),   (265,268),  (758,811)),
+    ((330,343,540,421),   (268,430),  (756,970)),
+    ((330,493,540,573),   (273,586),  (755,1116)),
+    ((330,646,540,721),   (265,745),  (758,635)),
+    ((330,795,540,880),   (263,876),  (760,783)),
+    ((330,945,540,1013),  (263,1031), (756,936)),
+    ((330,1098,540,1170), (270,1186), (760,1090)),
 ]
 
 # ---------------- Ngưỡng/timeout ----------------

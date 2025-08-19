@@ -3,7 +3,7 @@
 #  Auto helper (ADB + OpenCV + Tesseract) — no mouse needed
 #  (ĐÃ MỞ RỘNG: adapter cho flows_* sử dụng wk.adb / wk.adb_bin)
 # ==========================================================
-import os
+import os,sys
 import re
 import time
 import uuid
@@ -43,6 +43,15 @@ _set_tess_prefix()
 
 
 # ================== TIỆN ÍCH CHUNG ==================
+def resource_path(relative_path):
+    """ Lấy đường dẫn tuyệt đối đến tài nguyên, hoạt động cho cả chế độ dev và PyInstaller """
+    try:
+        # PyInstaller tạo một thư mục tạm và lưu đường dẫn trong _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
 def _run(cmd, text=True, timeout: Optional[int] = None):
     return subprocess.run(cmd, capture_output=True, text=text, timeout=timeout)
 
@@ -181,62 +190,38 @@ def _list_langs() -> str:
 def _lang_available(lang_code: str) -> bool:
     return lang_code.lower() in _list_langs().lower()
 
-
 def ocr_image(img_bgr: np.ndarray, lang="vie", psm=6, whitelist: Optional[str] = None,
               save_debug: bool = False) -> str:
-    """
-    (CẢI TIẾN) OCR ảnh với các bước tiền xử lý nâng cao để cải thiện độ chính xác.
-    """
-    if img_bgr is None or img_bgr.size == 0:
-        return ""
-
-    # 1. Chuyển sang ảnh xám
     gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
-
-    # 2. (MỚI) Phóng to ảnh (Upscaling) - Rất quan trọng cho các chữ nhỏ
-    # Phóng to ảnh lên 2 lần bằng thuật toán Lanczos4 cho kết quả sắc nét nhất
-    height, width = gray.shape
-    upscaled_gray = cv2.resize(gray, (width * 2, height * 2), interpolation=cv2.INTER_LANCZOS4)
-
-    # 3. Áp dụng ngưỡng nhị phân hóa (Binarization)
-    # Sử dụng ADAPTIVE_THRESH_GAUSSIAN_C để xử lý tốt hơn với điều kiện ánh sáng không đều
-    binary_img = cv2.adaptiveThreshold(
-        upscaled_gray, 255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY_INV,  # Đảo ngược màu (chữ trắng, nền đen) giúp Tesseract nhận diện tốt hơn
-        11,  # Kích thước vùng lân cận
-        2  # Hằng số C
-    )
-
-    # 4. (TÙY CHỌN) Khử nhiễu nhẹ
-    # final_img = cv2.fastNlMeansDenoising(binary_img, None, 10, 7, 21)
-    final_img = binary_img  # Tạm thời không khử nhiễu để tránh làm mờ chữ
+    gray = cv2.GaussianBlur(gray, (3,3), 0)
+    gray = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)[1]
 
     if save_debug:
-        name = f"roi_processed_{uuid.uuid4().hex[:6]}.png"
-        cv2.imwrite(name, final_img)
-        log(f"💾 Lưu ROI đã xử lý: {name}")
+        name = f"roi_{uuid.uuid4().hex[:6]}.png"
+        cv2.imwrite(name, gray)
+        log(f"💾 Lưu ROI debug: {name}")
 
-    # Cấu hình Tesseract (giữ nguyên)
+    # dùng TESSDATA_PREFIX, không truyền --tessdata-dir (giống pick_coords/ocr_utils)
     cfg = f'--psm {psm} --oem 3'
     if whitelist:
         cfg += f' -c tessedit_char_whitelist={whitelist}'
 
-    # Logic chọn ngôn ngữ (giữ nguyên)
     _set_tess_prefix()
     langs_raw = _list_langs().lower()
-    chosen = "vie"
+    # ưu tiên 'vie+eng' nếu cả hai đều có, nếu không có 'vie' thì fallback 'eng'
     if "vie" in langs_raw and "eng" in langs_raw:
         chosen = "vie+eng"
+    elif "vie" in langs_raw:
+        chosen = "vie"
     elif "eng" in langs_raw:
         chosen = "eng"
+    else:
+        # không có ngôn ngữ nào khả dụng: trả rỗng để không nổ thread
+        chosen = "eng"
 
-    try:
-        txt = pytesseract.image_to_string(final_img, lang=chosen, config=cfg)
-        return txt.strip()
-    except Exception as e:
-        log(f"Lỗi Tesseract: {e}")
-        return ""
+    txt = pytesseract.image_to_string(gray, lang=chosen, config=cfg)
+
+    return txt.strip()
 
 def ocr_region(img_bgr: np.ndarray, x1, y1, x2, y2, **kwargs) -> str:
     roi = crop(img_bgr, x1, y1, x2, y2)

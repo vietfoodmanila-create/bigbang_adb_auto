@@ -20,7 +20,7 @@ from module import (
     type_text as _type_text,
     back as _back,
     state_simple as _state_simple,
-    free_img
+    free_img,resource_path
 )
 
 # ================== VÙNG ==================
@@ -37,17 +37,17 @@ REG_ICON_LIEN_MINH = (598, 1463, 753, 1600)
 REG_THONG_BAO = (315, 228, 620, 375)
 
 # ================== ẢNH ==================
-IMG_CLEAR_EMAIL_X = "images/login/clear_email_x.png"
-IMG_EMAIL_EMPTY = "images/login/email_empty.png"
-IMG_CLEAR_PASSWORD_X = "images/login/clear_password_x.png"
-IMG_PASSWORD_EMPTY = "images/login/password_empty.png"
-IMG_LOGIN_BUTTON = "images/login/login_button.png"
-IMG_DA_DANG_NHAP = "images/login/da_dang_nhap.png"
-IMG_XAC_NHAN_DANG_NHAP = "images/login/xac_nhan_dang_nhap.png"
-IMG_GAME_LOGIN_BUTTON = "images/login/game_login_button.png"
-IMG_XAC_NHAN_OFFLINE = "images/login/xac_nhan_offline.png"
-IMG_ICON_LIEN_MINH = "images/login/icon_lien_minh.png"
-IMG_THONG_BAO = "images/login/thong-bao.png"
+IMG_CLEAR_EMAIL_X = resource_path("images/login/clear_email_x.png")
+IMG_EMAIL_EMPTY = resource_path("images/login/email_empty.png")
+IMG_CLEAR_PASSWORD_X = resource_path("images/login/clear_password_x.png")
+IMG_PASSWORD_EMPTY = resource_path("images/login/password_empty.png")
+IMG_LOGIN_BUTTON = resource_path("images/login/login_button.png")
+IMG_DA_DANG_NHAP = resource_path("images/login/da_dang_nhap.png")
+IMG_XAC_NHAN_DANG_NHAP = resource_path("images/login/xac_nhan_dang_nhap.png")
+IMG_GAME_LOGIN_BUTTON = resource_path("images/login/game_login_button.png")
+IMG_XAC_NHAN_OFFLINE = resource_path("images/login/xac_nhan_offline.png")
+IMG_ICON_LIEN_MINH = resource_path("images/login/icon_lien_minh.png")
+IMG_THONG_BAO = resource_path("images/login/thong-bao.png")
 
 # ================== GAME PKG/ACT (đồng bộ test) ==================
 GAME_PKG = "com.phsgdbz.vn"

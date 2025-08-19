@@ -27,6 +27,7 @@ from module import (
     DEFAULT_THR as THR_DEFAULT,
     free_img as _free_img,         # NEW: bổ sung trong module.py (xem patch bên dưới)
     mem_relief as _mem_relief,     # NEW: bổ sung trong module.py (xem patch bên dưới)
+    resource_path
 )
 
 # ================== REGIONS ==================
@@ -39,9 +40,9 @@ REG_JOIN_COLOR = (780, 345, 795, 368)    # vùng nhỏ để lấy màu
 PT_JOIN_COLOR  = (790, 355)              # toạ độ điểm giữa vùng (fallback)
 
 # ================== IMAGES ==================
-IMG_OUTSIDE   = "images/lien_minh/lien-minh-outside.png"
-IMG_JOIN      = "images/lien_minh/gia-nhap-lien-minh.png"
-IMG_INSIDE    = "images/lien_minh/lien-minh-inside.png"
+IMG_OUTSIDE   = resource_path("images/lien_minh/lien-minh-outside.png")
+IMG_JOIN      = resource_path("images/lien_minh/gia-nhap-lien-minh.png")
+IMG_INSIDE    = resource_path("images/lien_minh/lien-minh-inside.png")
 
 # ================== PARAMS ==================
 ESC_DELAY     = 1.5

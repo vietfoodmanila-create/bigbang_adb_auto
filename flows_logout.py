@@ -16,7 +16,7 @@ from module import (
     pt_in_region,
     esc_soft_clear,
     is_green_pixel,
-    wait_state,
+    wait_state,resource_path
 )
 
 USE_CV = True  # cần opencv-python
@@ -35,16 +35,16 @@ REG_NUT_QUAY_LAI        = (3, 1348, 175, 1596)
 REG_NUT_CAI_DAT         = (33, 773, 140, 905)
 
 # ================= TEMPLATES =================
-IMG_DA_DANG_NHAP        = "images/thoat_tai_khoan/da-dang-nhap.png"
-IMG_XAC_NHAN_THOAT      = "images/thoat_tai_khoan/xac-nhan-thoat.png"
-IMG_NUT_MENU            = "images/thoat_tai_khoan/nut-menu.png"
-IMG_CAI_DAT             = "images/thoat_tai_khoan/cai-dat.png"
-IMG_DOI_TAI_KHOAN       = "images/thoat_tai_khoan/doi-tai-khoan.png"
-IMG_XAC_NHAN_DOI_TK     = "images/thoat_tai_khoan/xac-nhan-doi-tk.png"
+IMG_DA_DANG_NHAP        = resource_path("images/thoat_tai_khoan/da-dang-nhap.png")
+IMG_XAC_NHAN_THOAT      = resource_path("images/thoat_tai_khoan/xac-nhan-thoat.png")
+IMG_NUT_MENU            = resource_path("images/thoat_tai_khoan/nut-menu.png")
+IMG_CAI_DAT             = resource_path("images/thoat_tai_khoan/cai-dat.png")
+IMG_DOI_TAI_KHOAN       = resource_path("images/thoat_tai_khoan/doi-tai-khoan.png")
+IMG_XAC_NHAN_DOI_TK     = resource_path("images/thoat_tai_khoan/xac-nhan-doi-tk.png")
 
-IMG_PHU_DE              = "images/thoat_tai_khoan/phu-de.png"
-IMG_NUT_QUAY_LAI        = "images/thoat_tai_khoan/nut-quay-lai.png"
-IMG_NUT_CAI_DAT         = "images/thoat_tai_khoan/nut-cai-dat.png"
+IMG_PHU_DE              = resource_path("images/thoat_tai_khoan/phu-de.png")
+IMG_NUT_QUAY_LAI        = resource_path("images/thoat_tai_khoan/nut-quay-lai.png")
+IMG_NUT_CAI_DAT         = resource_path("images/thoat_tai_khoan/nut-cai-dat.png")
 
 # ================= TIỆN ÍCH NHỎ (bổ sung) =================
 def _grace_check_need_login(wk, secs: float = 2.0) -> bool:

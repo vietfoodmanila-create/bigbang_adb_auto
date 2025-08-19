@@ -30,7 +30,7 @@ from module import (
     grab_screen_np, find_on_frame,
     tap, tap_center, swipe,
     aborted, sleep_coop,
-    free_img, mem_relief,
+    free_img, mem_relief,resource_path
 )
 
 # ===== REGIONS =====
@@ -43,14 +43,14 @@ REG_BTN_ROI         = (621, 1293, 840, 1390)       # roi-khoi-lien-minh.png
 REG_XAC_NHAN_ROI    = (521, 911, 773, 1011)        # xac-nhan-roi-lm.png
 
 # ===== IMAGES =====
-IMG_INSIDE          = "images/lien_minh/lien-minh-inside.png"
-IMG_OUTSIDE         = "images/lien_minh/lien-minh-outside.png"
+IMG_INSIDE          = resource_path("images/lien_minh/lien-minh-inside.png")
+IMG_OUTSIDE         = resource_path("images/lien_minh/lien-minh-outside.png")
 
-IMG_SANH            = "images/lien_minh/sanh-lien-minh.png"
-IMG_DONG_THAI       = "images/lien_minh/dong-thai.png"
-IMG_ROI             = "images/lien_minh/roi-khoi-lien-minh.png"
-IMG_XN_ROI          = "images/lien_minh/xac-nhan-roi-lm.png"
-IMG_KIEM_TRA_CHUNG  = "images/lien_minh/kiem-tra-chung.png"
+IMG_SANH            = resource_path("images/lien_minh/sanh-lien-minh.png")
+IMG_DONG_THAI       = resource_path("images/lien_minh/dong-thai.png")
+IMG_ROI             = resource_path("images/lien_minh/roi-khoi-lien-minh.png")
+IMG_XN_ROI          = resource_path("images/lien_minh/xac-nhan-roi-lm.png")
+IMG_KIEM_TRA_CHUNG  = resource_path("images/lien_minh/kiem-tra-chung.png")
 
 # ===== PARAMS =====
 THR_DEFAULT = 0.86

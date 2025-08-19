@@ -22,9 +22,9 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 from webdriver_manager.chrome import ChromeDriverManager
 import requests
-
-from PySide6.QtCore import Qt, QPoint
-from PySide6.QtGui import QCloseEvent, QTextCursor
+from module import resource_path
+from PySide6.QtCore import Qt, QPoint,QSize
+from PySide6.QtGui import QCloseEvent, QTextCursor,QIcon,QPixmap
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QSplitter, QVBoxLayout, QHBoxLayout,
     QTableWidget, QTableWidgetItem, QHeaderView, QCheckBox,
@@ -180,7 +180,11 @@ class MainWindow(QMainWindow):
     def __init__(self, cloud: CloudClient):
         super().__init__()
         self.cloud = cloud
-        self.setWindowTitle("BigBang ADB Auto")
+        self.setWindowTitle("BigBang Auto")
+        app_icon = QIcon(resource_path("images/logo.ico"))
+        self.setWindowIcon(app_icon)
+
+        self.resize(DEFAULT_WIDTH, DEFAULT_HEIGHT)
         self.resize(DEFAULT_WIDTH, DEFAULT_HEIGHT)
         self.setMinimumSize(420, 760)
         self.active_port: Optional[int] = None
@@ -194,8 +198,22 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0);
         main_layout.setSpacing(0)
 
+        # 2. (MỚI) Tạo một thanh header chứa logo và banner
+        header_widget = QWidget()
+        header_layout = QHBoxLayout(header_widget)
+        header_layout.setContentsMargins(5, 5, 5, 5)  # Thêm một chút padding
+
+        # Thêm logo vào bên trái
+        logo_label = QLabel()
+        pixmap = QPixmap(resource_path("images/logo.png"))  # Dùng file .png cho hiển thị trong app
+        logo_label.setPixmap(pixmap.scaled(QSize(32, 32), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+       # header_layout.addWidget(logo_label)
+
+        # Thêm banner vào bên cạnh, cho nó chiếm phần lớn không gian
         self.banner = AccountBanner(self.cloud, controller=self, parent=self)
-        main_layout.addWidget(self.banner)
+        header_layout.addWidget(self.banner, 1)  # Số 1 làm cho banner co giãn
+
+        main_layout.addWidget(header_widget)  # Thêm thanh header vào layout chính
 
         splitter = QSplitter(Qt.Vertical)
         main_layout.addWidget(splitter)

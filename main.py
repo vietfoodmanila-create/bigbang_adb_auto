@@ -9,10 +9,91 @@ import re
 import os
 import requests
 from PySide6.QtCore import QObject, QThread, QTimer, Signal, Qt
-from PySide6.QtWidgets import QApplication, QCheckBox, QTableWidgetItem,QDialog
+from PySide6.QtWidgets import QApplication, QCheckBox, QTableWidgetItem,QDialog,QMessageBox,QProgressDialog
 
 from ui_main import MainWindow, ADB_PATH, list_adb_ports_with_status, list_known_ports_from_data
 from ui_auth import CloudClient, AuthDialog
+
+CURRENT_VERSION = "1.0" # Đặt phiên bản hiện tại của ứng dụng ở đây
+
+
+def check_for_updates(cloud_client):
+    """Kiểm tra và xử lý cập nhật."""
+    try:
+        print("Đang kiểm tra phiên bản mới...")
+        # Giả định bạn đã thêm API /api/app/version
+        response = requests.get(f"{cloud_client.base_url}/api/app/version", timeout=10)
+        response.raise_for_status()
+        latest_info = response.json()
+
+        latest_version = latest_info.get("version")
+
+        if latest_version and latest_version > CURRENT_VERSION:
+            notes = latest_info.get("notes", "Không có mô tả.")
+            update_url = latest_info.get("url")
+
+            reply = QMessageBox.information(
+                None,
+                "Có phiên bản mới!",
+                f"Đã có phiên bản {latest_version} (bạn đang dùng {CURRENT_VERSION}).\n\n"
+                f"Nội dung cập nhật:\n{notes}\n\n"
+                "Bạn có muốn tải về và cài đặt ngay bây giờ không?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+
+            if reply == QMessageBox.Yes and update_url:
+                download_and_launch_updater(update_url)
+                return True  # Báo hiệu cần thoát ứng dụng để cập nhật
+
+    except Exception as e:
+        print(f"Lỗi khi kiểm tra cập nhật: {e}")
+
+    return False  # Không có cập nhật hoặc người dùng từ chối
+
+
+def download_and_launch_updater(url):
+    """Tải file zip và khởi chạy updater.py."""
+    try:
+        # Tải file
+        response = requests.get(url, stream=True, timeout=300)
+        response.raise_for_status()
+        total_size = int(response.headers.get('content-length', 0))
+
+        zip_path = Path("update.zip")
+
+        progress = QProgressDialog("Đang tải bản cập nhật...", "Hủy", 0, total_size)
+        progress.setWindowModality(Qt.WindowModal)
+        progress.show()
+
+        downloaded = 0
+        with open(zip_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                if progress.wasCanceled():
+                    raise Exception("Người dùng đã hủy tải.")
+                f.write(chunk)
+                downloaded += len(chunk)
+                progress.setValue(downloaded)
+
+        progress.setValue(total_size)
+
+        # Khởi chạy updater
+        main_app_executable = os.path.abspath(sys.argv[0])  # Đường dẫn đến main.py
+        main_app_pid = os.getpid()
+
+        # Chạy updater.py bằng chính trình thông dịch python hiện tại
+        subprocess.Popen([
+            sys.executable,
+            "updater.py",
+            str(zip_path.resolve()),
+            str(main_app_pid),
+            main_app_executable
+        ])
+
+    except Exception as e:
+        QMessageBox.critical(None, "Lỗi", f"Quá trình tải cập nhật thất bại:\n{e}")
+        raise  # Ném lại lỗi để ngăn ứng dụng chính tiếp tục
+
 
 def run_cmd(cmd: list[str], timeout=6) -> tuple[int, str, str]:
     try:
@@ -199,6 +280,9 @@ if __name__ == "__main__":
     os.environ.setdefault("QT_QPA_PLATFORM", "windows")
     app = QApplication(sys.argv)
     cloud = CloudClient()
+    # (MỚI) Kiểm tra cập nhật ngay sau khi có cloud client
+    if check_for_updates(cloud):
+        sys.exit(0)  # Thoát để updater hoạt động
     td = cloud.load_token()
     if not td or not td.token:
         dlg = AuthDialog()
