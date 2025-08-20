@@ -303,16 +303,49 @@ def adb_bin_safe(wk, *args, timeout=6):
     except Exception as e:
         return -1, b"", str(e).encode()
 
+
 def screencap_bytes_wk(wk) -> Optional[bytes]:
-    if wk and hasattr(wk, "adb_bin") and callable(wk.adb_bin):
-        c, out, _ = adb_bin_safe(wk, "exec-out", "screencap", "-p", timeout=5)
-        if c == 0 and out:
-            return out
-    adb_safe(wk, "shell", "screencap", "-p", "/sdcard/__cap.png", timeout=4)
-    c, out, _ = adb_bin_safe(wk, "shell", "cat", "/sdcard/__cap.png", timeout=6)
-    if c == 0 and out:
-        return out
-    return None
+    """
+    (SỬA LỖI) Sử dụng phương thức chụp ảnh 3 bước an toàn (lưu file -> kéo về -> đọc)
+    để tránh lỗi MemoryError do đầy bộ đệm. Đây là phương pháp ổn định nhất.
+    """
+    # Đặt tên file tạm duy nhất cho mỗi port để tránh xung đột nếu chạy nhiều máy ảo
+    port = getattr(wk, 'port', 'global')
+    temp_device_path = f"/sdcard/__screencap_{port}.png"
+    temp_pc_path = Path(f"__temp_screencap_{port}.png")
+
+    try:
+        # Bước 1: Chụp và lưu ảnh vào file tạm trên thiết bị
+        code, out, err = adb_safe(wk, "shell", "screencap", "-p", temp_device_path, timeout=5)
+        if code != 0:
+            log_wk(wk, f"Lỗi chụp ảnh trên thiết bị: {err}")
+            return None
+
+        # Bước 2: Kéo file ảnh từ thiết bị về máy tính
+        code, out, err = adb_safe(wk, "pull", temp_device_path, str(temp_pc_path), timeout=6)
+        if code != 0:
+            log_wk(wk, f"Lỗi kéo file ảnh về máy tính: {err}")
+            return None
+
+        # Bước 3: Đọc nội dung file ảnh từ máy tính
+        if temp_pc_path.exists() and temp_pc_path.stat().st_size > 0:
+            content = temp_pc_path.read_bytes()
+            return content
+        else:
+            log_wk(wk, "Lỗi: File ảnh kéo về bị rỗng hoặc không tồn tại.")
+            return None
+
+    except Exception as e:
+        log_wk(wk, f"Lỗi bất ngờ trong quá trình chụp ảnh: {e}")
+        return None
+    finally:
+        # Dọn dẹp file tạm ở cả hai nơi để giữ sạch sẽ
+        try:
+            if temp_pc_path.exists():
+                os.remove(temp_pc_path)
+            adb_safe(wk, "shell", "rm", temp_device_path, timeout=2)
+        except Exception:
+            pass  # Lỗi dọn dẹp không nghiêm trọng
 
 def grab_screen_np(wk=None) -> Optional[np.ndarray]:
     try:
