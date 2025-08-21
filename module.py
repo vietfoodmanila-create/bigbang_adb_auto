@@ -285,7 +285,11 @@ def adb_safe(wk, *args, timeout=6):
         log_wk(wk, f"ADB lỗi (wk): {e}")
         return -1, "", str(e)
     try:
-        p = _run([ADB, "-s", DEVICE, *args], text=True, timeout=timeout)
+        startupinfo = None
+        if os.name == 'nt':
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        p = subprocess.run([ADB, "-s", DEVICE, *args], capture_output=True, text=True, timeout=timeout, startupinfo=startupinfo)
         return p.returncode, p.stdout or "", p.stderr or ""
     except Exception as e:
         return -1, "", str(e)
@@ -298,7 +302,11 @@ def adb_bin_safe(wk, *args, timeout=6):
             log_wk(wk, f"ADB(bin) lỗi (wk): {e}")
             return -1, b"", str(e).encode()
     try:
-        p = subprocess.run([ADB, "-s", DEVICE, *args], capture_output=True, timeout=timeout)
+        startupinfo = None
+        if os.name == 'nt':
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        p = subprocess.run([ADB, "-s", DEVICE, *args], capture_output=True, timeout=timeout, startupinfo=startupinfo)
         return p.returncode, p.stdout, p.stderr
     except Exception as e:
         return -1, b"", str(e).encode()
@@ -309,10 +317,9 @@ def screencap_bytes_wk(wk) -> Optional[bytes]:
     (SỬA LỖI) Sử dụng phương thức chụp ảnh 3 bước an toàn (lưu file -> kéo về -> đọc)
     để tránh lỗi MemoryError do đầy bộ đệm. Đây là phương pháp ổn định nhất.
     """
-    # Đặt tên file tạm duy nhất cho mỗi port để tránh xung đột nếu chạy nhiều máy ảo
     port = getattr(wk, 'port', 'global')
     temp_device_path = f"/sdcard/__screencap_{port}.png"
-    temp_pc_path = Path(f"__temp_screencap_{port}.png")
+    temp_pc_path = Path(f"__temp_screencap_{port}.png").resolve()
 
     try:
         # Bước 1: Chụp và lưu ảnh vào file tạm trên thiết bị
@@ -329,7 +336,8 @@ def screencap_bytes_wk(wk) -> Optional[bytes]:
 
         # Bước 3: Đọc nội dung file ảnh từ máy tính
         if temp_pc_path.exists() and temp_pc_path.stat().st_size > 0:
-            content = temp_pc_path.read_bytes()
+            with open(temp_pc_path, "rb") as f:
+                content = f.read()
             return content
         else:
             log_wk(wk, "Lỗi: File ảnh kéo về bị rỗng hoặc không tồn tại.")
@@ -339,13 +347,14 @@ def screencap_bytes_wk(wk) -> Optional[bytes]:
         log_wk(wk, f"Lỗi bất ngờ trong quá trình chụp ảnh: {e}")
         return None
     finally:
-        # Dọn dẹp file tạm ở cả hai nơi để giữ sạch sẽ
+        # Bước 4: Dọn dẹp file tạm ở cả hai nơi để giữ sạch sẽ
         try:
             if temp_pc_path.exists():
                 os.remove(temp_pc_path)
+            # Luôn cố gắng xóa file trên thiết bị
             adb_safe(wk, "shell", "rm", temp_device_path, timeout=2)
-        except Exception:
-            pass  # Lỗi dọn dẹp không nghiêm trọng
+        except Exception as e:
+            log_wk(wk, f"Cảnh báo: Lỗi khi dọn dẹp file tạm: {e}")
 
 def grab_screen_np(wk=None) -> Optional[np.ndarray]:
     try:

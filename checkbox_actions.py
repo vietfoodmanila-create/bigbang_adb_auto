@@ -40,7 +40,7 @@ def _table_row_for_port(ctrl, port: int) -> int:
 def _plan_online_blessings(accounts_selected: List[Dict], config: Dict, targets: List[Dict],
                            accounts_already_running: List[str]) -> Dict[str, List[Dict]]:
     """
-    (CẬP NHẬT) Lập kế hoạch Chúc phúc, ưu tiên các tài khoản đã có nhiệm vụ khác.
+    (CẬP NHẬT) Lập kế hoạch Chúc phúc dựa trên số lượt đã chạy trong ngày.
     """
     plan = {}
     per_run = config.get('per_run', 0)
@@ -50,20 +50,27 @@ def _plan_online_blessings(accounts_selected: List[Dict], config: Dict, targets:
 
     now = datetime.now()
 
+    # 1. Lọc các mục tiêu cần chúc phúc trong lượt này
     due_targets = []
     for target in targets:
-        last_run_dt = _parse_datetime_str(target.get('last_blessed_run_at'))
-        if not last_run_dt or (now - last_run_dt) >= timedelta(hours=cooldown_h):
-            due_targets.append(target)
+        blessed_today_count = len(target.get('blessed_today_by', []))
+
+        # Nếu chưa đủ số lượt yêu cầu -> mục tiêu này vẫn "due"
+        if blessed_today_count < per_run:
+            last_run_dt = _parse_datetime_str(target.get('last_blessed_run_at'))
+            # Nếu đã hết cooldown HOẶC đây là lần chúc phúc đầu tiên trong ngày -> hợp lệ
+            if not last_run_dt or (now - last_run_dt) >= timedelta(hours=cooldown_h) or blessed_today_count > 0:
+                due_targets.append(target)
 
     if not due_targets:
         return {}
 
-    # Tạo danh sách các tài khoản có thể chúc phúc, ưu tiên những tài khoản đã có nhiệm vụ
+    # 2. Danh sách các tài khoản có thể chúc phúc, ưu tiên những tài khoản đã có nhiệm vụ
     priority_emails = [email for email in accounts_already_running]
     other_emails = [acc.get('game_email') for acc in accounts_selected if acc.get('game_email') not in priority_emails]
     available_emails = priority_emails + other_emails
 
+    # 3. Phân bổ
     for target in due_targets:
         blessed_today_emails = {item.get('game_email') for item in target.get('blessed_today_by', [])}
         needed = per_run - len(blessed_today_emails)
@@ -73,8 +80,10 @@ def _plan_online_blessings(accounts_selected: List[Dict], config: Dict, targets:
             if needed <= 0: break
             if email not in blessed_today_emails:
                 if email not in plan: plan[email] = []
+                # Đảm bảo không gán trùng lặp trong cùng một kế hoạch
                 if not any(t['id'] == target['id'] for t in plan[email]):
                     plan[email].append({'id': target['id'], 'name': target.get('target_name')})
+                    # Giả lập đã thêm để không bị gán lại trong cùng 1 lần quét
                     blessed_today_emails.add(email)
                     needed -= 1
     return plan
@@ -325,7 +334,15 @@ class AccountRunner(QObject, threading.Thread):
                 accounts_to_run_this_loop = [acc for acc in self.master_account_list if
                                              acc.get('game_email') in all_emails_to_run]
 
-                rec = accounts_to_run_this_loop[0]  # Luôn chạy tài khoản đầu tiên trong danh sách tổng hợp
+                # Ưu tiên tài khoản có cả 2 nhiệm vụ
+                rec = None
+                for acc in accounts_to_run_this_loop:
+                    if acc.get('game_email') in emails_for_build_expe and acc.get('game_email') in emails_for_bless:
+                        rec = acc
+                        break
+                if not rec:
+                    rec = accounts_to_run_this_loop[0]  # Nếu không, lấy tài khoản đầu tiên
+
                 self.log(
                     f"Tổng hợp: {len(accounts_to_run_this_loop)} tài khoản có nhiệm vụ. Bắt đầu xử lý: {rec.get('game_email')}")
 
@@ -405,7 +422,6 @@ class AccountRunner(QObject, threading.Thread):
 
         self.log("Vòng lặp auto đã dừng theo yêu cầu.")
         self.finished_run.emit()
-
     def _auto_stop_and_uncheck(self):
         row = _table_row_for_port(self.ctrl, self.port)
         if row >= 0: _set_checkbox_state_silent(self.ctrl, row, False)
