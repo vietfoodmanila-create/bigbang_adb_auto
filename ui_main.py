@@ -36,7 +36,7 @@ from ui_license import AccountBanner
 from utils_crypto import encrypt
 
 # ====== Cấu hình ======
-ADB_PATH = Path(r"D:\Program Files\Nox\bin\adb.exe")
+ADB_PATH = Path(r"C:\platform-tools\adb.exe")
 DATA_ROOT = Path("data")
 DATA_ROOT.mkdir(exist_ok=True)
 DEFAULT_WIDTH = 450

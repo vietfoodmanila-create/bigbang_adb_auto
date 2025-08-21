@@ -29,7 +29,7 @@ except ImportError:
 # !!! VUI LÒNG KIỂM TRA VÀ CHỈNH LẠI CÁC ĐƯỜNG DẪN BÊN DƯỚI !!!
 DEBUG = True
 SHOT_DIR = "shots"
-ADB_PATH = r"D:\Program Files\Nox\bin\adb.exe"
+ADB_PATH = r"C:\platform-tools\adb.exe"
 DEVICE = "127.0.0.1:62025"
 SCREEN_W, SCREEN_H = 900, 1600
 TESSERACT_EXE = r"C:\Program Files\Tesseract-OCR\tesseract.exe"

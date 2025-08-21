@@ -470,7 +470,7 @@ def on_checkbox_toggled(ctrl, port: int, checked: bool):
         try:
             adb_path = str(ADB_PATH)
         except Exception:
-            adb_path = r"D:\Program Files\Nox\bin\adb.exe"
+            adb_path = r"C:\platform-tools\adb.exe"
         if (r := _RUNNERS.get(port)) and r.is_alive():
             _ui_log(ctrl, port, "Auto đang chạy.");
             return
