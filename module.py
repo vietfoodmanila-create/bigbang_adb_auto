@@ -19,7 +19,7 @@ import pytesseract
 
 
 # ================== CẤU HÌNH ==================
-ADB = r"C:\platform-tools\adb.exe"
+ADB = r"D:\Program Files\Nox\bin\nox_adb.exe"
 DEVICE = "127.0.0.1:62025"
 SCREEN_W, SCREEN_H = 900, 1600
 

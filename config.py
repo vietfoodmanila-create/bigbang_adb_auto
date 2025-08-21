@@ -4,7 +4,7 @@ DEBUG = True                     # ← bật/tắt debug toàn cục
 SHOT_DIR = "shots"               # thư mục lưu ảnh debug
 
 # ==== ADB ====
-ADB_PATH = r"C:\platform-tools\adb.exe"      # hoặc r"D:\Program Files\Nox\bin\nox_adb.exe"
+ADB_PATH = r"D:\Program Files\Nox\bin\nox_adb.exe"      # hoặc r"D:\Program Files\Nox\bin\nox_adb.exe"
 DEVICE   = "127.0.0.1:62025"
 
 # ==== Screen size (Android) ====
