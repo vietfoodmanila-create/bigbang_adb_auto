@@ -88,22 +88,17 @@ def _pre_login_taps(wk):
 
 def login_once(wk, email: str, password: str, server: str = "", date: str = "") -> bool:
     if _aborted(wk): _log(wk, "⛔ Hủy trước khi login."); return False
-    _log(wk, "Bắt đầu LOGIN…")
-
     # Nếu không ở need_login, thử back nhẹ vài lần để lộ form
     st = _state_simple(wk, package_hint=GAME_PKG)
     if st != "need_login":
-        _log(wk, f"State hiện tại: {st} → BACK 2 lần cho về form.")
         _back(wk, times=2, wait_each=0.4)
         if not _sleep_coop(wk, 0.6): return False
 
     _pre_login_taps(wk)
     if _aborted(wk): return False
-
     # 1) Clear & nhập email
     img = _grab_screen_np(wk)
     ok, pt, sc = find_on_frame(img, IMG_CLEAR_EMAIL_X, region=REG_CLEAR_EMAIL_X, threshold=0.86)
-    _log(wk, f"Tìm clear-email-X: ok={ok}, score={sc:.3f}, pt={pt}")
     free_img(img)
     if ok and pt:
         _tap(wk, *pt)
@@ -116,7 +111,6 @@ def login_once(wk, email: str, password: str, server: str = "", date: str = "") 
     # 2) Clear & nhập password
     img = _grab_screen_np(wk)
     ok, pt, sc = find_on_frame(img, IMG_CLEAR_PASSWORD_X, region=REG_CLEAR_PASSWORD_X, threshold=0.86)
-    _log(wk, f"Tìm clear-password-X: ok={ok}, score={sc:.3f}, pt={pt}")
     free_img(img)
     if ok and pt:
         _tap(wk, *pt)
@@ -135,12 +129,10 @@ def login_once(wk, email: str, password: str, server: str = "", date: str = "") 
     # 4) Nhấn Login
     img = _grab_screen_np(wk)
     ok, pt, sc = find_on_frame(img, IMG_LOGIN_BUTTON, region=REG_LOGIN_BUTTON, threshold=0.86)
-    _log(wk, f"Tìm login_button: ok={ok}, score={sc:.3f}, pt={pt}")
     free_img(img)
     if ok and pt:
         _tap(wk, *pt)
     else:
-        _log(wk, "Không thấy ảnh login_button → tap trung tâm vùng.")
         _tap_center(wk, REG_LOGIN_BUTTON)
     if not _sleep_coop(wk, 1.0): return False
 
@@ -152,7 +144,6 @@ def login_once(wk, email: str, password: str, server: str = "", date: str = "") 
         ok_da, _, sc_da = find_on_frame(img_now, IMG_DA_DANG_NHAP, region=REG_DA_DANG_NHAP, threshold=0.86)
         ok_game, pt_game, sc_game = find_on_frame(img_now, IMG_GAME_LOGIN_BUTTON, region=REG_GAME_LOGIN_BUTTON,
                                                   threshold=0.86)
-        _log(wk, f"Check cặp nút: da_dang_nhap(ok={ok_da}, sc={sc_da:.3f}), vao_game(ok={ok_game}, sc={sc_game:.3f})")
         return ok_da, ok_game, pt_game
 
     while time.time() < phase_deadline:
@@ -167,7 +158,6 @@ def login_once(wk, email: str, password: str, server: str = "", date: str = "") 
 
         if ok_da and ok_game:
             is_gray, msg = _is_pixel_gray(img, 263, 1115)
-            _log(wk, msg)
             if is_gray:
                 _log(wk, "⚠️ Phát hiện trò chơi đang bảo trì.")
                 free_img(img);
@@ -183,7 +173,6 @@ def login_once(wk, email: str, password: str, server: str = "", date: str = "") 
         if not ok_da and not ok_game:
             ok_tb, _, _ = find_on_frame(img, IMG_THONG_BAO, region=REG_THONG_BAO, threshold=0.86)
             if ok_tb:
-                _log(wk, "Thấy 'thong-bao' → đang đóng...")
                 _tap(wk, 443, 1300);
                 free_img(img)
                 if not _sleep_coop(wk, 1.5): return False
@@ -191,7 +180,6 @@ def login_once(wk, email: str, password: str, server: str = "", date: str = "") 
 
             ok_xn, pt_xn, _ = find_on_frame(img, IMG_XAC_NHAN_DANG_NHAP, region=REG_XAC_NHAN_DANG_NHAP, threshold=0.86)
             if ok_xn and pt_xn:
-                _log(wk, "Thấy 'xac_nhan_dang_nhap' -> đang bấm...")
                 _tap(wk, *pt_xn);
                 free_img(img)
                 if not _sleep_coop(wk, 1.0): return False
@@ -199,7 +187,6 @@ def login_once(wk, email: str, password: str, server: str = "", date: str = "") 
 
             # Nếu đã từng bấm nút "Vào Game" thì thoát vòng lặp
             if pressed_once:
-                _log(wk, "Các nút đã biến mất sau khi nhấn. Chuyển sang bước tiếp theo.")
                 free_img(img)
                 break
 
@@ -211,7 +198,6 @@ def login_once(wk, email: str, password: str, server: str = "", date: str = "") 
         if _aborted(wk): return False
         img = _grab_screen_np(wk)
         ok, pt, sc = find_on_frame(img, IMG_XAC_NHAN_OFFLINE, region=REG_XAC_NHAN_OFFLINE, threshold=0.86)
-        _log(wk, f"Check 'xác nhận offline': ok={ok}, score={sc:.3f}, pt={pt}")
         free_img(img)
         if ok and pt:
             _tap(wk, *pt)
@@ -227,12 +213,9 @@ def login_once(wk, email: str, password: str, server: str = "", date: str = "") 
         if st == "gametw":
             img = _grab_screen_np(wk)
             ok, _, sc = find_on_frame(img, IMG_ICON_LIEN_MINH, region=REG_ICON_LIEN_MINH, threshold=0.86)
-            _log(wk, f"Đợi icon liên minh: ok={ok}, score={sc:.3f}")
             free_img(img)
             if ok:
-                _log(wk, "LOGIN OK — đã vào game.")
                 return True
         if not _sleep_coop(wk, 1.0): return False
 
-    _log(wk, "LOGIN FAIL — quá thời gian đợi vào game.")
     return False

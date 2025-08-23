@@ -712,7 +712,6 @@ def wait_state(wk, target: str = "need_login", timeout: float = 6.0, interval: f
     end = time.time() + timeout
     while time.time() < end:
         st = state_simple(wk)
-        log_wk(wk, f"Đợi state='{target}'… hiện tại={st}")
         if st == target:
             return True
         time.sleep(interval)
