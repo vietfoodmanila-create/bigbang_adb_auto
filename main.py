@@ -10,12 +10,34 @@ import os
 import requests
 from PySide6.QtCore import QObject, QThread, QTimer, Signal, Qt
 from PySide6.QtWidgets import QApplication, QCheckBox, QTableWidgetItem, QDialog, QMessageBox, QProgressDialog
+from config import PLATFORM_TOOLS_ADB_PATH
 
 from ui_main import MainWindow, ADB_PATH, list_adb_ports_with_status, list_known_ports_from_data
 from ui_auth import CloudClient, AuthDialog
 
 CURRENT_VERSION = "1.0"  # Đặt phiên bản hiện tại của ứng dụng ở đây
 
+def force_kill_adb_server():
+    """Dừng tất cả các tiến trình adb.exe đang chạy để đảm bảo sự ổn định."""
+    try:
+        # Lệnh taskkill của Windows mạnh hơn adb kill-server
+        print("Đang buộc dừng tất cả các tiến trình adb.exe...")
+        subprocess.run(
+            ["taskkill", "/F", "/IM", "adb.exe"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        print("OK: Đã dọn dẹp các tiến trình ADB cũ.")
+    except FileNotFoundError:
+        # Nếu không có taskkill (máy không phải Windows), dùng lệnh adb kill-server
+        try:
+            print("Không tìm thấy taskkill, đang dùng adb kill-server...")
+            subprocess.run([PLATFORM_TOOLS_ADB_PATH, "kill-server"], timeout=5)
+        except Exception as e:
+            print(f"Lưu ý: Không thể dừng ADB server. Lỗi: {e}")
+    except Exception as e:
+        print(f"Lưu ý: Lỗi khi buộc dừng ADB. Lỗi: {e}")
 
 def check_for_updates(cloud_client):
     """Kiểm tra và xử lý cập nhật."""
@@ -411,6 +433,29 @@ class AppController(QObject):
 
 
 if __name__ == "__main__":
+    # --- CƠ CHẾ CHẶN KHỞI ĐỘNG NHIỀU LẦN ---
+    # Sử dụng thư viện socket để tạo một "khóa" trên toàn hệ thống.
+    # Đoạn mã này phải được đặt trước khi QApplication được tạo.
+    try:
+        # Tạo một socket và cố gắng "bind" vào một cổng cụ thể (ví dụ: 60101).
+        # Cổng này là một số ngẫu nhiên, bạn có thể thay đổi nếu muốn.
+        lock_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        lock_socket.bind(("127.0.0.1", 60101))
+        # Nếu bind thành công, có nghĩa là chưa có instance nào khác đang chạy.
+        # Socket này sẽ được giữ cho đến khi chương trình đóng.
+    except OSError:
+        # Nếu bind thất bại, có nghĩa là cổng đã được sử dụng -> đã có instance khác đang chạy.
+        # Hiển thị thông báo lỗi và thoát.
+        error_app = QApplication(sys.argv)
+        QMessageBox.critical(
+            None,
+            "Lỗi Khởi Động",
+            "Chương trình BigBang Auto đã được khởi động.\n"
+            "Vui lòng kiểm tra lại trên thanh tác vụ hoặc khay hệ thống."
+        )
+        sys.exit(1) # Thoát chương trình
+    # --- KẾT THÚC CƠ CHẾ CHẶN ---
+    force_kill_adb_server()
     os.environ.setdefault("QT_QPA_PLATFORM", "windows")
     app = QApplication(sys.argv)
     cloud = CloudClient()

@@ -77,41 +77,46 @@ def _run_quiet(cmd: list[str], timeout: int = 8) -> str:
         return ""
 
 
+# Dán để thay thế hàm cũ trong ui_main.py
+
 def list_adb_ports_with_status() -> dict[str, str]:
-    """Sửa đổi để quét riêng biệt và ưu tiên LDPlayer, tránh Nox nhận diện nhầm."""
+    """
+    Quét và hợp nhất kết quả từ cả hai ADB của Nox và LDPlayer.
+    Ưu tiên kết quả từ LDPlayer ADB nếu có sự trùng lặp để tránh nhận diện sai.
+    """
     result: dict[str, str] = {}
-    ld_devices = set()
 
-    def parse_adb_output(text: str, emulator_name: str, existing_devices: set = None):
-        for line in text.splitlines():
-            s = line.strip()
-            if not s or s.startswith("List of devices"): continue
-            if "emulator-" in s or "127.0.0.1:" in s:
-                parts = s.split()
-                device_id = parts[0]
+    # 1. Quét bằng LDPlayer ADB trước
+    try:
+        if Path(LDPLAYER_ADB_PATH).exists():
+            ld_text = _run_quiet([str(LDPLAYER_ADB_PATH), "devices"], timeout=6)
+            for line in ld_text.splitlines():
+                s = line.strip()
+                if not s or s.startswith("List of devices"): continue
+                if "emulator-" in s or "127.0.0.1:" in s:
+                    parts = s.split()
+                    device_id = parts[0]
+                    status = parts[1] if len(parts) > 1 else "unknown"
+                    result[device_id] = f"LDPlayer - {status}"
+    except Exception as e:
+        print(f"Lỗi khi quét LDPlayer ADB: {e}")
 
-                # Nếu đang quét Nox, bỏ qua nếu device này đã được LDPlayer nhận diện
-                if existing_devices is not None and device_id in existing_devices:
-                    continue
-
-                status = parts[1] if len(parts) > 1 else "unknown"
-                result[device_id] = f"{emulator_name} - {status}"
-                if emulator_name == "LDPlayer":
-                    ld_devices.add(device_id)
-
-    # Bước 1: Luôn quét LDPlayer trước để lấy danh sách chính xác các máy ảo của nó
-    if EMULATOR_TYPE in ("LDPLAYER", "BOTH"):
-        ld_adb_executable = str(LDPLAYER_ADB_PATH) if Path(LDPLAYER_ADB_PATH).exists() else "dnadb"
-        ld_text = _run_quiet([ld_adb_executable, "devices"], timeout=6)
-        if ld_text:
-            parse_adb_output(ld_text, "LDPlayer")
-
-    # Bước 2: Quét Nox, nhưng bỏ qua các máy ảo đã được xác định là của LDPlayer
-    if EMULATOR_TYPE in ("NOX", "BOTH"):
-        nox_adb_executable = str(NOX_ADB_PATH) if Path(NOX_ADB_PATH).exists() else "nox_adb"
-        nox_text = _run_quiet([nox_adb_executable, "devices"], timeout=6)
-        if nox_text:
-            parse_adb_output(nox_text, "Nox", existing_devices=ld_devices)
+    # 2. Quét bằng Nox ADB
+    try:
+        if Path(NOX_ADB_PATH).exists():
+            nox_text = _run_quiet([str(NOX_ADB_PATH), "devices"], timeout=6)
+            for line in nox_text.splitlines():
+                s = line.strip()
+                if not s or s.startswith("List of devices"): continue
+                if "emulator-" in s or "127.0.0.1:" in s:
+                    parts = s.split()
+                    device_id = parts[0]
+                    # CHỈ THÊM NẾU MÁY ẢO NÀY CHƯA ĐƯỢC LDPLAYER NHẬN DIỆN
+                    if device_id not in result:
+                        status = parts[1] if len(parts) > 1 else "unknown"
+                        result[device_id] = f"Nox - {status}"
+    except Exception as e:
+        print(f"Lỗi khi quét Nox ADB: {e}")
 
     return result
 
@@ -414,10 +419,23 @@ class MainWindow(QMainWindow):
             self.populate_accounts_table()
             return
         try:
+            # BƯỚC 1: Lưu trạng thái các checkbox hiện tại
+            checked_emails = set()
+            for row in range(self.tbl_acc.rowCount()):
+                widget = self.tbl_acc.cellWidget(row, ACC_COL_CHECK)
+                checkbox = widget.findChild(QCheckBox) if widget else None
+                if checkbox and checkbox.isChecked():
+                    email_item = self.tbl_acc.item(row, ACC_COL_EMAIL)
+                    if email_item:
+                        checked_emails.add(email_item.text())
+
             self.log_msg("Đang tải và làm mới danh sách tài khoản từ server...")
             QApplication.setOverrideCursor(Qt.WaitCursor)
             self.online_accounts = self.cloud.get_game_accounts()
-            self.populate_accounts_table()
+
+            # BƯỚC 2: Truyền danh sách đã lưu vào hàm populate
+            self.populate_accounts_table(checked_emails)
+
             self.log_msg(f"Đã làm mới {len(self.online_accounts)} tài khoản.")
         except Exception as e:
             self.online_accounts = []
@@ -430,19 +448,30 @@ class MainWindow(QMainWindow):
     def load_accounts_current_port(self):
         self.load_and_sync_accounts()
 
-    def populate_accounts_table(self):
+    def populate_accounts_table(self, checked_emails: set = None):
+        # Sử dụng một set rỗng làm giá trị mặc định an toàn
+        if checked_emails is None:
+            checked_emails = set()
+
         self.tbl_acc.setRowCount(0)
         for row_data in self.online_accounts:
-            row = self.tbl_acc.rowCount();
+            row = self.tbl_acc.rowCount()
             self.tbl_acc.insertRow(row)
-            chk_widget = QWidget();
-            chk_layout = QHBoxLayout(chk_widget);
-            chk_box = QCheckBox();
-            chk_layout.addWidget(chk_box);
-            chk_layout.setAlignment(Qt.AlignCenter);
-            chk_layout.setContentsMargins(0, 0, 0, 0);
+            chk_widget = QWidget()
+            chk_layout = QHBoxLayout(chk_widget)
+            chk_box = QCheckBox()
+
+            # BƯỚC 3: Khôi phục trạng thái checkbox
+            email = row_data.get('game_email', '')
+            if email in checked_emails:
+                chk_box.setChecked(True)
+
+            chk_layout.addWidget(chk_box)
+            chk_layout.setAlignment(Qt.AlignCenter)
+            chk_layout.setContentsMargins(0, 0, 0, 0)
             self.tbl_acc.setCellWidget(row, ACC_COL_CHECK, chk_widget)
-            self.tbl_acc.setItem(row, ACC_COL_EMAIL, QTableWidgetItem(row_data.get('game_email', '')))
+            self.tbl_acc.setItem(row, ACC_COL_EMAIL, QTableWidgetItem(email))
+
             btn_info = QPushButton("🔍")
             btn_info.setFixedSize(32, 32)
             btn_info.setToolTip("Xem chi tiết thông tin")
@@ -452,7 +481,6 @@ class MainWindow(QMainWindow):
             else:
                 btn_info.setStyleSheet("background-color: #f5f5f5; color: #616161;")
             btn_info.clicked.connect(lambda c, r=row: self.on_info_account(r))
-            self.tbl_acc.setCellWidget(row, ACC_COL_STATUS, btn_info)
             self.tbl_acc.setCellWidget(row, ACC_COL_STATUS, btn_info)
 
             btn_edit = QPushButton("✏️")
@@ -468,6 +496,7 @@ class MainWindow(QMainWindow):
             btn_delete.setStyleSheet("background-color: #ffebee; color: #c62828;")
             btn_delete.clicked.connect(lambda c, r=row: self.on_delete_account(r))
             self.tbl_acc.setCellWidget(row, ACC_COL_DELETE, btn_delete)
+
         self.log_msg(f"Đã hiển thị {len(self.online_accounts)} tài khoản.")
 
     def on_add_account(self):

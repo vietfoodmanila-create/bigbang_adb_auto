@@ -13,7 +13,7 @@ from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QCheckBox, QMessageBox
 from ui_main import MainWindow
 # (SỬA ĐỔI) Import các biến config mới
-from config import NOX_ADB_PATH, LDPLAYER_ADB_PATH
+from config import LDPLAYER_ADB_PATH
 from flows_logout import logout_once
 from flows_login import login_once
 from flows_lien_minh import join_guild_once, ensure_guild_inside
@@ -478,17 +478,10 @@ def on_checkbox_toggled(ctrl, port: int, checked: bool):  # Sửa: port không c
 
         _ui_log(ctrl, device_id, f"Chuẩn bị chạy auto cho {len(accounts_selected)} tài khoản đã chọn.")
 
-        # --- Logic mới để chọn ADB path ---
-        adb_path = ""
-        emulator_name_item = ctrl.w.tbl_nox.item(row, 1)
-        emulator_name = emulator_name_item.text() if emulator_name_item else ""
-
-        if "LDPlayer" in emulator_name:
-            adb_path = str(LDPLAYER_ADB_PATH)
-            _ui_log(ctrl, device_id, f"Phát hiện LDPlayer, sử dụng ADB: {adb_path}")
-        else:  # Mặc định là Nox
-            adb_path = str(NOX_ADB_PATH)
-            _ui_log(ctrl, device_id, f"Phát hiện Nox, sử dụng ADB: {adb_path}")
+        # --- Logic mới để chọn ADB path (đã được đơn giản hóa) ---
+        # Luôn sử dụng ADB của LDPlayer đã được định nghĩa trong config
+        adb_path = str(LDPLAYER_ADB_PATH)
+        _ui_log(ctrl, device_id, f"Sử dụng ADB của LDPlayer: {adb_path}")
 
         if not Path(adb_path).exists():
             msg = f"Lỗi: Không tìm thấy file ADB tại: {adb_path}"
