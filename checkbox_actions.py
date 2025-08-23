@@ -11,7 +11,9 @@ from datetime import datetime, timedelta
 
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QCheckBox, QMessageBox
-from ui_main import MainWindow, ADB_PATH
+from ui_main import MainWindow
+# (SỬA ĐỔI) Import các biến config mới
+from config import NOX_ADB_PATH, LDPLAYER_ADB_PATH
 from flows_logout import logout_once
 from flows_login import login_once
 from flows_lien_minh import join_guild_once, ensure_guild_inside
@@ -24,15 +26,15 @@ from utils_crypto import decrypt
 
 GAME_PKG = "com.phsgdbz.vn"
 GAME_ACT = "com.phsgdbz.vn/org.cocos2dx.javascript.GameTwActivity"
-_RUNNERS: Dict[int, "AccountRunner"] = {}
+_RUNNERS: Dict[str, "AccountRunner"] = {}  # Sửa: Key là device_id (str)
 
 
-# ====== Tiện ích UI (Giữ nguyên) ======
-def _table_row_for_port(ctrl, port: int) -> int:
+# ====== Tiện ích UI (SỬA ĐỔI) ======
+def _table_row_for_device_id(ctrl, device_id: str) -> int:  # Sửa: Tìm theo device_id
     tv = ctrl.w.tbl_nox
     for r in range(tv.rowCount()):
-        it = tv.item(r, 2)
-        if it and it.text().strip().isdigit() and int(it.text().strip()) == port:
+        it = tv.item(r, 2)  # Cột 2 là Device ID
+        if it and it.text().strip() == device_id:
             return r
     return -1
 
@@ -88,6 +90,7 @@ def _plan_online_blessings(accounts_selected: List[Dict], config: Dict, targets:
                     needed -= 1
     return plan
 
+
 def _get_ui_state(ctrl, row: int) -> str:
     it = ctrl.w.tbl_nox.item(row, 3)
     return it.text().strip().lower() if it else ""
@@ -103,11 +106,11 @@ def _set_checkbox_state_silent(ctrl, row: int, checked: bool):
             chk.blockSignals(False)
 
 
-def _ui_log(ctrl, port: int, msg: str):
+def _ui_log(ctrl, device_id: str, msg: str):  # Sửa: Nhận device_id
     try:
-        ctrl.w.log_msg(f"[{port}] {msg}")
+        ctrl.w.log_msg(f"[{device_id}] {msg}")
     except Exception:
-        print(f"[{port}] {msg}")
+        print(f"[{device_id}] {msg}")
 
 
 # ====== Helpers: ngày/giờ & điều kiện (Giữ nguyên) ======
@@ -165,10 +168,10 @@ def _scan_eligible_accounts(accounts_selected: List[Dict], features: dict) -> Li
 
 # ====== Wrapper ADB cho flows_* (Đã sửa lỗi) ======
 class SimpleNoxWorker:
-    def __init__(self, adb_path: str, port: int, log_cb):
-        self.port = port;
-        self._adb = adb_path;
-        self._serial = f"127.0.0.1:{port}"
+    def __init__(self, adb_path: str, device_id: str, log_cb):  # Sửa: Nhận device_id
+        self.device_id = device_id
+        self._adb = adb_path
+        self._serial = device_id  # Sử dụng device_id trực tiếp làm serial
         self.game_package = GAME_PKG;
         self.game_activity = GAME_ACT;
         self._log_cb = log_cb
@@ -184,7 +187,7 @@ class SimpleNoxWorker:
                 startupinfo = subprocess.STARTUPINFO()
                 startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             p = subprocess.run([self._adb, "-s", self._serial, *args], capture_output=True, text=text, timeout=timeout,
-                               startupinfo=startupinfo)
+                               startupinfo=startupinfo, encoding='utf-8', errors='ignore')
             return p.returncode, p.stdout or "", p.stderr or ""
         except subprocess.TimeoutExpired:
             return 124, "", "timeout"
@@ -240,19 +243,21 @@ class SimpleNoxWorker:
 class AccountRunner(QObject, threading.Thread):
     finished_run = Signal()
 
-    def __init__(self, ctrl, port: int, adb_path: str, cloud: CloudClient, accounts_selected: List[Dict],
+    def __init__(self, ctrl, device_id: str, adb_path: str, cloud: CloudClient, accounts_selected: List[Dict],
+                 # Sửa: nhận device_id
                  user_login_email: str):
         QObject.__init__(self)
-        threading.Thread.__init__(self, name=f"AccountRunner-{port}", daemon=True)
+        threading.Thread.__init__(self, name=f"AccountRunner-{device_id}", daemon=True)  # Sửa: tên thread
         self.ctrl = ctrl;
-        self.port = port;
+        self.device_id = device_id;  # Sửa: lưu device_id
         self.adb_path = adb_path
         self.cloud = cloud;
         self.user_login_email = user_login_email
         self.master_account_list = list(accounts_selected)
         self._stop = threading.Event();
         self._last_log = None
-        self.wk = SimpleNoxWorker(adb_path, port, log_cb=lambda s: _ui_log(ctrl, port, s))
+        self.wk = SimpleNoxWorker(adb_path, device_id,
+                                  log_cb=lambda s: _ui_log(ctrl, device_id, s))  # Sửa: truyền device_id
         self.stop_evt = threading.Event()
         setattr(self.wk, "_abort", False)
 
@@ -269,7 +274,7 @@ class AccountRunner(QObject, threading.Thread):
         return True
 
     def log(self, s: str):
-        if s != self._last_log: self._last_log = s; _ui_log(self.ctrl, self.port, s)
+        if s != self._last_log: self._last_log = s; _ui_log(self.ctrl, self.device_id, s)
 
     def _get_features(self) -> Dict[str, bool]:
         return dict(
@@ -422,16 +427,21 @@ class AccountRunner(QObject, threading.Thread):
 
         self.log("Vòng lặp auto đã dừng theo yêu cầu.")
         self.finished_run.emit()
+
     def _auto_stop_and_uncheck(self):
-        row = _table_row_for_port(self.ctrl, self.port)
+        row = _table_row_for_device_id(self.ctrl, self.device_id)
         if row >= 0: _set_checkbox_state_silent(self.ctrl, row, False)
         self.request_stop()
 
 
 # ====== API cho UI: gọi khi tick/untick ======
-def on_checkbox_toggled(ctrl, port: int, checked: bool):
-    row = _table_row_for_port(ctrl, port)
+def on_checkbox_toggled(ctrl, port: int, checked: bool):  # Sửa: port không còn dùng, nhưng giữ signature
+    row = ctrl.w.tbl_nox.currentRow()  # Lấy hàng đang được chọn
     if row < 0: return
+
+    device_id_item = ctrl.w.tbl_nox.item(row, 2)
+    if not device_id_item: return
+    device_id = device_id_item.text()
 
     if checked:
         try:
@@ -439,12 +449,12 @@ def on_checkbox_toggled(ctrl, port: int, checked: bool):
             if not lic_status.get("valid"):
                 msg = "License chưa kích hoạt hoặc đã hết hạn."
                 QMessageBox.warning(ctrl.w, "Lỗi License", msg)
-                _ui_log(ctrl, port, f"Không thể bắt đầu auto: {msg}")
+                _ui_log(ctrl, device_id, f"Không thể bắt đầu auto: {msg}")
                 _set_checkbox_state_silent(ctrl, row, False);
                 return
         except Exception as e:
             QMessageBox.critical(ctrl.w, "Lỗi kiểm tra License", f"Không thể xác thực license:\n{e}")
-            _ui_log(ctrl, port, f"Không thể bắt đầu auto: Lỗi kiểm tra license.")
+            _ui_log(ctrl, device_id, f"Không thể bắt đầu auto: Lỗi kiểm tra license.")
             _set_checkbox_state_silent(ctrl, row, False);
             return
 
@@ -457,32 +467,49 @@ def on_checkbox_toggled(ctrl, port: int, checked: bool):
                 if r < len(all_online_accounts): accounts_selected.append(all_online_accounts[r])
 
         if not accounts_selected:
-            _ui_log(ctrl, port, "Chưa có tài khoản nào được chọn để chạy.")
+            _ui_log(ctrl, device_id, "Chưa có tài khoản nào được chọn để chạy.")
             _set_checkbox_state_silent(ctrl, row, False);
             return
 
         user_login_email = ctrl.w.cloud.load_token().email
         if not user_login_email:
-            _ui_log(ctrl, port, "Lỗi: Không tìm thấy email người dùng.");
+            _ui_log(ctrl, device_id, "Lỗi: Không tìm thấy email người dùng.");
             return
 
-        _ui_log(ctrl, port, f"Chuẩn bị chạy auto cho {len(accounts_selected)} tài khoản đã chọn.")
-        try:
-            adb_path = str(ADB_PATH)
-        except Exception:
-            adb_path = r"D:\Program Files\Nox\bin\nox_adb.exe"
-        if (r := _RUNNERS.get(port)) and r.is_alive():
-            _ui_log(ctrl, port, "Auto đang chạy.");
+        _ui_log(ctrl, device_id, f"Chuẩn bị chạy auto cho {len(accounts_selected)} tài khoản đã chọn.")
+
+        # --- Logic mới để chọn ADB path ---
+        adb_path = ""
+        emulator_name_item = ctrl.w.tbl_nox.item(row, 1)
+        emulator_name = emulator_name_item.text() if emulator_name_item else ""
+
+        if "LDPlayer" in emulator_name:
+            adb_path = str(LDPLAYER_ADB_PATH)
+            _ui_log(ctrl, device_id, f"Phát hiện LDPlayer, sử dụng ADB: {adb_path}")
+        else:  # Mặc định là Nox
+            adb_path = str(NOX_ADB_PATH)
+            _ui_log(ctrl, device_id, f"Phát hiện Nox, sử dụng ADB: {adb_path}")
+
+        if not Path(adb_path).exists():
+            msg = f"Lỗi: Không tìm thấy file ADB tại: {adb_path}"
+            _ui_log(ctrl, device_id, msg)
+            QMessageBox.critical(ctrl.w, "Lỗi Cấu hình", msg)
+            _set_checkbox_state_silent(ctrl, row, False);
+            return
+        # --- Hết logic mới ---
+
+        if (r := _RUNNERS.get(device_id)) and r.is_alive():
+            _ui_log(ctrl, device_id, "Auto đang chạy.");
             return
 
-        runner = AccountRunner(ctrl, port, adb_path, ctrl.w.cloud, accounts_selected, user_login_email)
+        runner = AccountRunner(ctrl, device_id, adb_path, ctrl.w.cloud, accounts_selected, user_login_email)
         runner.finished_run.connect(lambda: _set_checkbox_state_silent(ctrl, row, False))
 
-        _RUNNERS[port] = runner;
+        _RUNNERS[device_id] = runner;
         runner.start();
-        _ui_log(ctrl, port, "Bắt đầu auto.")
+        _ui_log(ctrl, device_id, "Bắt đầu auto.")
 
     else:
-        if r := _RUNNERS.get(port): r.request_stop()
-        _RUNNERS.pop(port, None)
-        _ui_log(ctrl, port, "Đã gửi yêu cầu dừng auto.")
+        if r := _RUNNERS.get(device_id): r.request_stop()
+        _RUNNERS.pop(device_id, None)
+        _ui_log(ctrl, device_id, "Đã gửi yêu cầu dừng auto.")

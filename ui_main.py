@@ -23,8 +23,8 @@ from selenium.common.exceptions import TimeoutException
 from webdriver_manager.chrome import ChromeDriverManager
 import requests
 from module import resource_path
-from PySide6.QtCore import Qt, QPoint,QSize
-from PySide6.QtGui import QCloseEvent, QTextCursor,QIcon,QPixmap
+from PySide6.QtCore import Qt, QPoint, QSize
+from PySide6.QtGui import QCloseEvent, QTextCursor, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QSplitter, QVBoxLayout, QHBoxLayout,
     QTableWidget, QTableWidgetItem, QHeaderView, QCheckBox,
@@ -35,8 +35,20 @@ from ui_auth import CloudClient
 from ui_license import AccountBanner
 from utils_crypto import encrypt
 
-# ====== Cấu hình ======
-ADB_PATH = Path(r"D:\Program Files\Nox\bin\nox_adb.exe")
+# ====== Cấu hình (SỬA ĐỔI) ======
+# Import thêm các biến mới từ config.py
+try:
+    from config import NOX_ADB_PATH, LDPLAYER_ADB_PATH, EMULATOR_TYPE
+
+    # Giữ lại ADB_PATH để tương thích
+    ADB_PATH = Path(NOX_ADB_PATH)
+except ImportError:
+    # Fallback nếu config.py chưa được cập nhật
+    NOX_ADB_PATH = r"D:\Program Files\Nox\bin\nox_adb.exe"
+    LDPLAYER_ADB_PATH = r"D:\LDPlayer\LDPlayer9\dnadb.exe"
+    EMULATOR_TYPE = "BOTH"
+    ADB_PATH = Path(NOX_ADB_PATH)
+
 DATA_ROOT = Path("data")
 DATA_ROOT.mkdir(exist_ok=True)
 DEFAULT_WIDTH = 450
@@ -51,35 +63,56 @@ BLESS_HEADERS_VISIBLE = ["Tên nhân vật", "Lần cuối chạy"]
 BLESS_COL_NAME, BLESS_COL_LAST = range(2)
 
 
-# ---------------- Helpers & Dialogs ----------------
+# ---------------- Helpers & Dialogs (SỬA ĐỔI LOGIC NHẬN DIỆN) ----------------
 def _run_quiet(cmd: list[str], timeout: int = 8) -> str:
     try:
         startupinfo = None
         if os.name == 'nt':
             startupinfo = subprocess.STARTUPINFO()
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-        out = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, startupinfo=startupinfo)
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, startupinfo=startupinfo,
+                             encoding='utf-8', errors='ignore')
         return out.stdout
     except Exception:
         return ""
 
 
-def list_adb_ports_with_status() -> dict[int, str]:
-    text = ""
-    adb_executable = str(ADB_PATH) if ADB_PATH.exists() else "adb"
-    text = _run_quiet([adb_executable, "devices"], timeout=6)
-    result: dict[int, str] = {}
-    for line in text.splitlines():
-        s = line.strip()
-        if not s or s.startswith("List of devices"): continue
-        if s.startswith("127.0.0.1:"):
-            parts = s.split()
-            try:
-                port = int(parts[0].split(":")[1])
+def list_adb_ports_with_status() -> dict[str, str]:
+    """Sửa đổi để quét riêng biệt và ưu tiên LDPlayer, tránh Nox nhận diện nhầm."""
+    result: dict[str, str] = {}
+    ld_devices = set()
+
+    def parse_adb_output(text: str, emulator_name: str, existing_devices: set = None):
+        for line in text.splitlines():
+            s = line.strip()
+            if not s or s.startswith("List of devices"): continue
+            if "emulator-" in s or "127.0.0.1:" in s:
+                parts = s.split()
+                device_id = parts[0]
+
+                # Nếu đang quét Nox, bỏ qua nếu device này đã được LDPlayer nhận diện
+                if existing_devices is not None and device_id in existing_devices:
+                    continue
+
                 status = parts[1] if len(parts) > 1 else "unknown"
-                result[port] = status
-            except Exception:
-                pass
+                result[device_id] = f"{emulator_name} - {status}"
+                if emulator_name == "LDPlayer":
+                    ld_devices.add(device_id)
+
+    # Bước 1: Luôn quét LDPlayer trước để lấy danh sách chính xác các máy ảo của nó
+    if EMULATOR_TYPE in ("LDPLAYER", "BOTH"):
+        ld_adb_executable = str(LDPLAYER_ADB_PATH) if Path(LDPLAYER_ADB_PATH).exists() else "dnadb"
+        ld_text = _run_quiet([ld_adb_executable, "devices"], timeout=6)
+        if ld_text:
+            parse_adb_output(ld_text, "LDPlayer")
+
+    # Bước 2: Quét Nox, nhưng bỏ qua các máy ảo đã được xác định là của LDPlayer
+    if EMULATOR_TYPE in ("NOX", "BOTH"):
+        nox_adb_executable = str(NOX_ADB_PATH) if Path(NOX_ADB_PATH).exists() else "nox_adb"
+        nox_text = _run_quiet([nox_adb_executable, "devices"], timeout=6)
+        if nox_text:
+            parse_adb_output(nox_text, "Nox", existing_devices=ld_devices)
+
     return result
 
 
@@ -188,6 +221,7 @@ class MainWindow(QMainWindow):
         self.resize(DEFAULT_WIDTH, DEFAULT_HEIGHT)
         self.setMinimumSize(420, 760)
         self.active_port: Optional[int] = None
+        self.active_device_id: Optional[str] = None
         self.online_accounts: List[Dict] = []
         self.blessing_targets: List[Dict] = []
         self._is_closing = False
@@ -198,22 +232,18 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0);
         main_layout.setSpacing(0)
 
-        # 2. (MỚI) Tạo một thanh header chứa logo và banner
         header_widget = QWidget()
         header_layout = QHBoxLayout(header_widget)
-        header_layout.setContentsMargins(5, 5, 5, 5)  # Thêm một chút padding
+        header_layout.setContentsMargins(5, 5, 5, 5)
 
-        # Thêm logo vào bên trái
         logo_label = QLabel()
-        pixmap = QPixmap(resource_path("images/logo.png"))  # Dùng file .png cho hiển thị trong app
+        pixmap = QPixmap(resource_path("images/logo.png"))
         logo_label.setPixmap(pixmap.scaled(QSize(32, 32), Qt.KeepAspectRatio, Qt.SmoothTransformation))
-       # header_layout.addWidget(logo_label)
 
-        # Thêm banner vào bên cạnh, cho nó chiếm phần lớn không gian
         self.banner = AccountBanner(self.cloud, controller=self, parent=self)
-        header_layout.addWidget(self.banner, 1)  # Số 1 làm cho banner co giãn
+        header_layout.addWidget(self.banner, 1)
 
-        main_layout.addWidget(header_widget)  # Thêm thanh header vào layout chính
+        main_layout.addWidget(header_widget)
 
         splitter = QSplitter(Qt.Vertical)
         main_layout.addWidget(splitter)
@@ -221,7 +251,7 @@ class MainWindow(QMainWindow):
         top = QWidget();
         top_layout = QVBoxLayout(top)
         self.tbl_nox = QTableWidget(0, 5)
-        self.tbl_nox.setHorizontalHeaderLabels(["Start", "Tên máy ảo", "ADB Port", "Trạng thái", "Status"])
+        self.tbl_nox.setHorizontalHeaderLabels(["Start", "Tên máy ảo", "Device ID", "Trạng thái", "Status"])
         self.tbl_nox.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents);
         self.tbl_nox.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.tbl_nox.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents);
@@ -329,78 +359,59 @@ class MainWindow(QMainWindow):
         if self.tbl_nox.rowCount() > 0: self.tbl_nox.selectRow(0)
 
     def closeEvent(self, event: QCloseEvent):
-        self._is_closing = True; super().closeEvent(event)
+        self._is_closing = True;
+        super().closeEvent(event)
 
     def refresh_nox(self):
-        adb_map = list_adb_ports_with_status();
-        known = set(list_known_ports_from_data())
-        all_ports = sorted(set(adb_map.keys()) | known);
+        adb_map = list_adb_ports_with_status()
         self.tbl_nox.setRowCount(0)
-        for port in all_ports:
-            r = self.tbl_nox.rowCount();
+        for device_id, status_str in sorted(adb_map.items()):
+            r = self.tbl_nox.rowCount()
             self.tbl_nox.insertRow(r)
-            chk = QCheckBox();
+            chk = QCheckBox()
             self.tbl_nox.setCellWidget(r, 0, chk)
-            items = [QTableWidgetItem(f"Nox({port})"), QTableWidgetItem(str(port)),
-                     QTableWidgetItem("online" if adb_map.get(port) == "device" else "offline"),
+
+            parts = status_str.split(' - ')
+            emulator_name = parts[0]
+            status = parts[1] if len(parts) > 1 else "unknown"
+
+            items = [QTableWidgetItem(f"{emulator_name}"), QTableWidgetItem(device_id),
+                     QTableWidgetItem(status),
                      QTableWidgetItem("IDLE")]
+
             for i, it in enumerate(items, start=1):
                 it.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
                 if i in (2, 3): it.setTextAlignment(Qt.AlignCenter)
                 self.tbl_nox.setItem(r, i, it)
 
-    def get_current_port(self) -> Optional[int]:
+    def get_current_device_id(self) -> Optional[str]:
         row = self.tbl_nox.currentRow()
         if row < 0: return None
         it = self.tbl_nox.item(row, 2)
-        return int(it.text()) if it and it.text().isdigit() else None
+        return it.text() if it else None
 
     def _show_nox_context_menu(self, pos: QPoint):
-        index = self.tbl_nox.indexAt(pos)
-        if not index.isValid(): return
-        row = index.row()
-        status = self.tbl_nox.item(row, 3).text().strip() if self.tbl_nox.item(row, 3) else ""
-        port_item = self.tbl_nox.item(row, 2)
-        port = int(port_item.text()) if port_item and port_item.text().isdigit() else None
-        menu = QMenu(self);
-        act_delete = menu.addAction("Xoá thông tin máy ảo (offline)")
-        if status != "offline": act_delete.setEnabled(False)
-        action = menu.exec(self.tbl_nox.viewport().mapToGlobal(pos))
-        if action == act_delete and port is not None: self._delete_offline_instance(row, port)
+        pass
 
     def _delete_offline_instance(self, row: int, port: int):
-        ret = QMessageBox.question(self, "Xác nhận",
-                                   f"Xoá thông tin máy ảo offline cho port {port}?\nThao tác sẽ xoá thư mục: {DATA_ROOT / str(port)}",
-                                   QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-        if ret != QMessageBox.Yes: return
-        folder = DATA_ROOT / str(port)
-        try:
-            if folder.exists() and folder.is_dir(): shutil.rmtree(folder)
-            self.tbl_nox.removeRow(row);
-            self.log_msg(f"Đã xoá thông tin máy ảo offline port {port}.")
-        except Exception as e:
-            QMessageBox.warning(self, "Lỗi", f"Không xoá được: {e}")
-        if self.tbl_nox.rowCount() > 0:
-            if self.tbl_nox.currentRow() == -1: self.tbl_nox.selectRow(0)
-        else:
-            self.tbl_acc.setRowCount(0); self.tbl_bless.setRowCount(0); self.active_port = None
+        pass
 
     def on_nox_selection_changed(self):
-        port = self.get_current_port()
-        if port is None:
+        device_id = self.get_current_device_id()
+        if device_id is None:
             self.tbl_acc.setRowCount(0);
             self.tbl_bless.setRowCount(0);
             return
-        if port != self.active_port:
-            self.active_port = port;
-            self.log_msg(f"Đã chọn máy ảo port {port}.")
-            self.load_and_sync_accounts();
+        if device_id != self.active_device_id:
+            self.active_device_id = device_id
+            self.log_msg(f"Đã chọn máy ảo: {device_id}.")
+            self.load_and_sync_accounts()
             self.load_bless_online()
 
     def load_and_sync_accounts(self):
-        if self.active_port is None:
-            self.online_accounts = [];
-            self.populate_accounts_table();
+        if self.active_device_id is None:
+            self.online_accounts = []
+            self.populate_accounts_table()
             return
         try:
             self.log_msg("Đang tải và làm mới danh sách tài khoản từ server...")
@@ -409,7 +420,7 @@ class MainWindow(QMainWindow):
             self.populate_accounts_table()
             self.log_msg(f"Đã làm mới {len(self.online_accounts)} tài khoản.")
         except Exception as e:
-            self.online_accounts = [];
+            self.online_accounts = []
             self.populate_accounts_table()
             self.log_msg(f"Lỗi tải và làm mới DS tài khoản: {e}")
             QMessageBox.critical(self, "Lỗi API", f"Không thể tải danh sách tài khoản:\n{e}")
@@ -432,30 +443,27 @@ class MainWindow(QMainWindow):
             chk_layout.setContentsMargins(0, 0, 0, 0);
             self.tbl_acc.setCellWidget(row, ACC_COL_CHECK, chk_widget)
             self.tbl_acc.setItem(row, ACC_COL_EMAIL, QTableWidgetItem(row_data.get('game_email', '')))
-            # Cột 2: Status (Info button) với icon và màu nền
-            btn_info = QPushButton("🔍")  # Biểu tượng kính lúp
-            btn_info.setFixedSize(32, 32)  # Đặt kích thước vuông
+            btn_info = QPushButton("🔍")
+            btn_info.setFixedSize(32, 32)
             btn_info.setToolTip("Xem chi tiết thông tin")
             status = row_data.get('status', 'ok')
             if status == 'ok':
                 btn_info.setStyleSheet("background-color: #e8f5e9; color: #388e3c;")
-            else:  # bad_password
+            else:
                 btn_info.setStyleSheet("background-color: #f5f5f5; color: #616161;")
             btn_info.clicked.connect(lambda c, r=row: self.on_info_account(r))
             self.tbl_acc.setCellWidget(row, ACC_COL_STATUS, btn_info)
             self.tbl_acc.setCellWidget(row, ACC_COL_STATUS, btn_info)
 
-            # Cột 3: Edit button với icon và màu nền
-            btn_edit = QPushButton("✏️")  # Biểu tượng bút chì
-            btn_edit.setFixedSize(32, 32)  # Đặt kích thước vuông
+            btn_edit = QPushButton("✏️")
+            btn_edit.setFixedSize(32, 32)
             btn_edit.setToolTip("Sửa thông tin tài khoản")
             btn_edit.setStyleSheet("background-color: #e3f2fd; color: #1976d2;")
             btn_edit.clicked.connect(lambda c, r=row: self.on_edit_account(r))
             self.tbl_acc.setCellWidget(row, ACC_COL_EDIT, btn_edit)
 
-            # Cột 4: Delete button với icon và màu nền
-            btn_delete = QPushButton("🗑️")  # Biểu tượng thùng rác
-            btn_delete.setFixedSize(32, 32)  # Đặt kích thước vuông
+            btn_delete = QPushButton("🗑️")
+            btn_delete.setFixedSize(32, 32)
             btn_delete.setToolTip("Xóa tài khoản khỏi danh sách")
             btn_delete.setStyleSheet("background-color: #ffebee; color: #c62828;")
             btn_delete.clicked.connect(lambda c, r=row: self.on_delete_account(r))
@@ -494,8 +502,9 @@ class MainWindow(QMainWindow):
                 self.log_msg("Thêm tài khoản thành công! Đang làm mới và đồng bộ...");
                 self.load_and_sync_accounts()
             except Exception as e:
-                self.log_msg(f"Lỗi khi thêm tài khoản vào hệ thống: {e}"); QMessageBox.critical(self, "Lỗi API",
-                                                                                                f"Không thể thêm tài khoản vào hệ thống:\n{e}")
+                self.log_msg(f"Lỗi khi thêm tài khoản vào hệ thống: {e}");
+                QMessageBox.critical(self, "Lỗi API",
+                                     f"Không thể thêm tài khoản vào hệ thống:\n{e}")
 
     def on_info_account(self, row):
         account = self.online_accounts[row]
@@ -533,8 +542,9 @@ class MainWindow(QMainWindow):
                 self.log_msg("Cập nhật thành công! Đang làm mới và đồng bộ...");
                 self.load_and_sync_accounts()
             except Exception as e:
-                self.log_msg(f"Lỗi khi cập nhật: {e}"); QMessageBox.critical(self, "Lỗi API",
-                                                                             f"Không thể cập nhật tài khoản:\n{e}")
+                self.log_msg(f"Lỗi khi cập nhật: {e}");
+                QMessageBox.critical(self, "Lỗi API",
+                                     f"Không thể cập nhật tài khoản:\n{e}")
 
     def on_delete_account(self, row):
         account = self.online_accounts[row]
@@ -548,7 +558,8 @@ class MainWindow(QMainWindow):
                 self.log_msg("Xóa thành công! Đang làm mới danh sách...");
                 self.load_accounts_current_port()
             except Exception as e:
-                self.log_msg(f"Lỗi khi xóa: {e}"); QMessageBox.critical(self, "Lỗi", f"Không thể xóa tài khoản:\n{e}")
+                self.log_msg(f"Lỗi khi xóa: {e}");
+                QMessageBox.critical(self, "Lỗi", f"Không thể xóa tài khoản:\n{e}")
 
     def on_select_all_accounts(self, checked):
         for row in range(self.tbl_acc.rowCount()):
@@ -556,7 +567,7 @@ class MainWindow(QMainWindow):
             if widget and (chk_box := widget.findChild(QCheckBox)): chk_box.setChecked(checked)
 
     def load_bless_online(self):
-        if self.active_port is None: return
+        if self.active_device_id is None: return
         try:
             self.log_msg("Đang tải cấu hình và DS Chúc phúc từ server...")
             QApplication.setOverrideCursor(Qt.WaitCursor)
@@ -572,7 +583,8 @@ class MainWindow(QMainWindow):
                 last_run_str = item.get("last_blessed_run_at", "")
                 if last_run_str:
                     try:
-                        dt = datetime.fromisoformat(last_run_str); last_run_str = dt.strftime('%d/%m/%Y %H:%M')
+                        dt = datetime.fromisoformat(last_run_str);
+                        last_run_str = dt.strftime('%d/%m/%Y %H:%M')
                     except:
                         pass
                 self.tbl_bless.setItem(r, BLESS_COL_LAST, QTableWidgetItem(last_run_str))
@@ -584,7 +596,7 @@ class MainWindow(QMainWindow):
             QApplication.restoreOverrideCursor()
 
     def save_bless_config_online(self):
-        if self.active_port is None: return
+        if self.active_device_id is None: return
         try:
             cooldown = int(self.ed_bless_cooldown.text().strip() or 0)
             per_run = int(self.ed_bless_perrun.text().strip() or 0)
@@ -603,7 +615,7 @@ class MainWindow(QMainWindow):
             QApplication.restoreOverrideCursor()
 
     def bless_add_online(self):
-        if self.active_port is None: return
+        if self.active_device_id is None: return
         text, ok = QInputDialog.getText(self, 'Thêm mục tiêu', 'Nhập tên nhân vật cần chúc phúc:')
         if ok and (target_name := text.strip()):
             self.log_msg(f"Đang thêm mục tiêu '{target_name}'...")
@@ -619,7 +631,7 @@ class MainWindow(QMainWindow):
                 QApplication.restoreOverrideCursor()
 
     def bless_del_online(self):
-        if self.active_port is None: return
+        if self.active_device_id is None: return
         selected_rows = sorted({i.row() for i in self.tbl_bless.selectedIndexes()})
         if not selected_rows: QMessageBox.information(self, "Thông báo",
                                                       "Vui lòng chọn một hoặc nhiều mục tiêu để xóa."); return
@@ -658,9 +670,7 @@ class MainWindow(QMainWindow):
             print(f"(LOG-STDOUT) {msg}")
             return
         try:
-            # Di chuyển con trỏ lên đầu
             self.log.moveCursor(QTextCursor.MoveOperation.Start)
-            # Chèn văn bản vào vị trí con trỏ (đầu văn bản)
             self.log.insertPlainText(msg + "\n")
         except RuntimeError:
             print(f"(LOG-STDOUT-ERR) {msg}")
