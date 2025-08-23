@@ -12,7 +12,8 @@ import subprocess
 import gc
 from pathlib import Path
 from typing import Optional, Tuple, Callable
-
+from image_data import IMAGE_DATA # Import dictionary dữ liệu ảnh
+import base64
 import cv2
 import numpy as np
 import pytesseract
@@ -122,13 +123,47 @@ def crop_wh(img, x, y, w, h):
 # ================== TEMPLATE MATCH (CÓ CACHE) ==================
 _template_cache: dict[str, np.ndarray] = {}
 
+
+def _load_image_from_b64(path_key: str) -> np.ndarray | None:
+    """
+    Giải mã một chuỗi Base64 từ dictionary IMAGE_DATA và chuyển thành ảnh OpenCV.
+    """
+    # Lấy chuỗi base64 từ dictionary bằng key (chính là đường dẫn)
+    b64_string = IMAGE_DATA.get(path_key)
+    if not b64_string:
+        # Nếu không tìm thấy, có thể ảnh mới chưa được mã hóa
+        raise FileNotFoundError(
+            f"Không tìm thấy dữ liệu ảnh cho key '{path_key}' trong image_data.py. Bạn đã chạy lại encode_images.py chưa?")
+
+    # Giải mã chuỗi Base64 về dạng nhị phân
+    image_bytes = base64.b64decode(b64_string)
+
+    # Chuyển dữ liệu nhị phân thành một mảng numpy
+    np_array = np.frombuffer(image_bytes, np.uint8)
+
+    # Đọc mảng numpy thành ảnh màu OpenCV
+    return cv2.imdecode(np_array, cv2.IMREAD_COLOR)
+
+
+# Cache vẫn giữ nguyên để tăng tốc
+_template_cache: dict[str, np.ndarray] = {}
+
+
 def load_template(path: str) -> np.ndarray:
-    if path not in _template_cache:
-        mat = cv2.imread(path, cv2.IMREAD_COLOR)
+    """
+    Nâng cấp: Load ảnh từ cache, nếu không có thì giải mã từ image_data.py
+    """
+    # Chuẩn hóa đường dẫn để khớp với key trong dictionary
+    path_key = Path(path).as_posix()
+
+    if path_key not in _template_cache:
+        # Thay vì cv2.imread, chúng ta gọi hàm giải mã mới
+        mat = _load_image_from_b64(path_key)
         if mat is None:
-            raise FileNotFoundError(f"Không đọc được template: {path}")
-        _template_cache[path] = mat
-    return _template_cache[path]
+            raise RuntimeError(f"Giải mã ảnh thất bại từ key: {path_key}")
+        _template_cache[path_key] = mat
+
+    return _template_cache[path_key]
 
 def match_template(screen: np.ndarray, template: np.ndarray, thr=DEFAULT_THR
                    ) -> Tuple[bool, Optional[Tuple[int,int]], float]:
