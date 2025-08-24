@@ -603,7 +603,7 @@ class MainWindow(QMainWindow):
             config = self.cloud.get_blessing_config()
             self.ed_bless_cooldown.setText(str(config.get("cooldown_hours", 8)))
             self.ed_bless_perrun.setText(str(config.get("per_run", 3)))
-            self.blessing_targets = self.cloud.get_blessing_targets()
+            self.blessing_targets = self.cloud.get_blessing_targets(fetch_all=True)
             self.tbl_bless.setRowCount(0)
             for item in self.blessing_targets:
                 r = self.tbl_bless.rowCount();

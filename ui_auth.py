@@ -252,9 +252,17 @@ class CloudClient:
         self._raise_for_json_error(r)
         return r.json()
 
-    def get_blessing_targets(self) -> list:
-        """Lấy danh sách các mục tiêu Chúc phúc."""
-        r = self.session.get(self._url("/api/blessing/targets"), headers=self._auth_headers(), timeout=REQUEST_TIMEOUT)
+    # Đoạn code mới để thay thế
+    def get_blessing_targets(self, fetch_all: bool = False) -> list:
+        """
+        Lấy danh sách các mục tiêu Chúc phúc.
+        :param fetch_all: Nếu True, lấy tất cả mục tiêu để quản lý.
+                          Nếu False, chỉ lấy những mục tiêu đủ điều kiện để chạy auto.
+        """
+        path = "/api/blessing/targets"
+        params = {'all': 'true'} if fetch_all else {}
+
+        r = self.session.get(self._url(path), headers=self._auth_headers(), params=params, timeout=REQUEST_TIMEOUT)
         self._raise_for_json_error(r)
         return r.json().get("targets", [])
 
